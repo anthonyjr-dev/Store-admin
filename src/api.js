@@ -32,3 +32,84 @@ export function updateOrderStatus(id, status, token) {
     body: JSON.stringify({ status }),
   });
 }
+
+export function fetchProducts(category, branch_id) {
+  const params = new URLSearchParams();
+  if (category && category !== 'All') params.set('category', category);
+  if (branch_id) params.set('branch_id', String(branch_id));
+  const qs = params.toString() ? `?${params.toString()}` : '';
+  return apiFetch(`/products${qs}`);
+}
+
+export function fetchStores() {
+  return apiFetch('/stores');
+}
+
+export function fetchBranches(store_id) {
+  const qs = store_id ? `?store_id=${store_id}` : '';
+  return apiFetch(`/branches${qs}`);
+}
+
+export function createBranch(data, token) {
+  return apiFetch('/branches', token, { method: 'POST', body: JSON.stringify(data) });
+}
+
+export function updateBranch(id, data, token) {
+  return apiFetch(`/branches/${id}`, token, { method: 'PATCH', body: JSON.stringify(data) });
+}
+
+export function deleteBranch(id, token) {
+  return apiFetch(`/branches/${id}`, token, { method: 'DELETE' });
+}
+
+export function fetchUsers(page = 1, limit = 20, name, token) {
+  const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+  if (name) params.set('name', name);
+  return apiFetch(`/users?${params}`, token);
+}
+
+export function updateUser(id, data, token) {
+  return apiFetch(`/users/${id}`, token, { method: 'PATCH', body: JSON.stringify(data) });
+}
+
+export function createUser(data, token) {
+  return apiFetch('/users', token, { method: 'POST', body: JSON.stringify(data) });
+}
+
+export function createProduct(data, token) {
+  return apiFetch('/products', token, { method: 'POST', body: JSON.stringify(data) });
+}
+
+export function updateProduct(id, data, token) {
+  return apiFetch(`/products/${id}`, token, { method: 'PATCH', body: JSON.stringify(data) });
+}
+
+export function deleteProduct(id, token) {
+  return apiFetch(`/products/${id}`, token, { method: 'DELETE' });
+}
+
+export async function uploadProductImage(file, token) {
+  const form = new FormData();
+  form.append('file', file);
+  form.append('file_type', 'image');
+  form.append('module_id', '1001');
+  form.append('file_name', file.name);
+  form.append('folder_src', 'products');
+
+  const res = await fetch(`${BASE}/file-upload`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: form,
+  });
+  const text = await res.text();
+  let data = null;
+  if (text) { try { data = JSON.parse(text); } catch { data = text; } }
+  if (!res.ok) {
+    const msg = data?.message || data?.error || 'Upload failed';
+    throw new Error(typeof msg === 'string' ? msg : JSON.stringify(msg));
+  }
+  const filePath = data.data.file_path;
+  const parts = filePath.split(/[/\\]uploads[/\\]/);
+  const relative = parts[parts.length - 1].replace(/\\/g, '/');
+  return `${BASE}/uploads/${relative}`;
+}

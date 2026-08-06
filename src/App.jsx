@@ -6,6 +6,8 @@ import StoresPage from './pages/SchedulePage.jsx';
 import AddStorePage from './pages/ApplyPage.jsx';
 import ProfilePage from './pages/ProfilePage.jsx';
 import NotificationsPage from './pages/NotificationsPage.jsx';
+import ProductsPage from './pages/ProductsPage.jsx';
+import UsersPage from './pages/UsersPage.jsx';
 import Sidebar from './components/Sidebar.jsx';
 import BottomNav from './components/BottomNav.jsx';
 import { fetchAllOrders } from './api.js';
@@ -107,6 +109,7 @@ export default function App() {
       email,
       name: payload.user?.name || name || email.split('@')[0],
       id: payload.user?.id || null,
+      branch_id: payload.user?.branch_id ?? null,
     };
     saveSession(profile);
     setSession(profile);
@@ -131,10 +134,14 @@ export default function App() {
   const pendingCount = orders.filter((o) => o.status === 'pending').length;
   const unreadAlerts = notifications.filter((n) => !n.read).length;
 
+  const isSuperAdmin = session.branch_id === null || session.branch_id === undefined;
+
   const navItems = [
     { page: 'home',          label: 'Dashboard',     icon: 'fa-house' },
     { page: 'orders',        label: 'Orders',         icon: 'fa-bag-shopping',   badge: pendingCount },
+    { page: 'products',      label: 'Products',       icon: 'fa-box-open' },
     { page: 'stores',        label: 'Branches',       icon: 'fa-store' },
+    ...(isSuperAdmin ? [{ page: 'users', label: 'Users', icon: 'fa-users' }] : []),
     { page: 'notifications', label: 'Alerts',         icon: 'fa-bell',           badge: unreadAlerts },
     { page: 'profile',       label: 'Profile',        icon: 'fa-user' },
   ];
@@ -160,7 +167,8 @@ export default function App() {
             onOrdersChange={handleOrdersChange}
           />
         );
-      case 'stores':        return <StoresPage />;
+      case 'products':      return <ProductsPage token={session.token} branchId={session.branch_id} />;
+      case 'stores':        return <StoresPage token={session.token} />;
       case 'add-store':     return <AddStorePage onNavigate={setPage} />;
       case 'notifications':
         return (
@@ -169,6 +177,7 @@ export default function App() {
             onNotificationsChange={setNotifications}
           />
         );
+      case 'users':         return <UsersPage token={session.token} />;
       case 'profile':       return <ProfilePage profile={session} onLogout={handleLogout} />;
       default:
         return (
@@ -192,7 +201,7 @@ export default function App() {
           <h1 className="text-lg font-bold text-orange-500 md:hidden">Store Admin</h1>
           <div className="hidden md:block">
             <p className="text-xl font-bold text-slate-800 capitalize">
-              {page === 'home' ? 'Dashboard' : page === 'add-store' ? 'Add Branch' : page}
+              {page === 'home' ? 'Dashboard' : page === 'add-store' ? 'Add Branch' : page.charAt(0).toUpperCase() + page.slice(1)}
             </p>
           </div>
           <div className="flex items-center gap-3">

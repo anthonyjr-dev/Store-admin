@@ -2,16 +2,20 @@ import { useState } from 'react';
 
 const API_BASE_URL = 'https://apigateway.webtour.ph/auth';
 
-const emptyLogin = {
-  email: '',
-  password: '',
-};
-
-const emptyRegister = {
-  name: '',
-  email: '',
-  password: '',
-  confirmPassword: '',
+const ALIASES = {
+  admin: 'anthonyjr.decastro@gmail.com',
+  Admin: 'anthonyjr.decastro@gmail.com',
+  ADMIN: 'anthonyjr.decastro@gmail.com',
+  superadmin: 'anthonyjr.decastro@gmail.com',
+  Superadmin: 'anthonyjr.decastro@gmail.com',
+  SuperAdmin: 'anthonyjr.decastro@gmail.com',
+  SUPERADMIN: 'anthonyjr.decastro@gmail.com',
+  'super admin': 'anthonyjr.decastro@gmail.com',
+  'Super Admin': 'anthonyjr.decastro@gmail.com',
+  'SUPER ADMIN': 'anthonyjr.decastro@gmail.com',
+  makatistore: 'makatistore@butfirstcoffe.ph',
+  MakatiStore: 'makatistore@butfirstcoffe.ph',
+  MAKATISTORE: 'makatistore@butfirstcoffe.ph',
 };
 
 const readErrorMessage = (payload, fallback) => {
@@ -21,51 +25,14 @@ const readErrorMessage = (payload, fallback) => {
 };
 
 function AuthPage({ onAuthenticated }) {
-  const [mode, setMode] = useState('login');
-  const [loginForm, setLoginForm] = useState(emptyLogin);
-  const [registerForm, setRegisterForm] = useState(emptyRegister);
+  const [form, setForm] = useState({ email: '', password: '' });
   const [status, setStatus] = useState({ type: '', message: '' });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const isLogin = mode === 'login';
-
-  const updateLogin = (event) => {
-    const { name, value } = event.target;
-    setLoginForm((current) => ({ ...current, [name]: value }));
-  };
-
-  const updateRegister = (event) => {
-    const { name, value } = event.target;
-    setRegisterForm((current) => ({ ...current, [name]: value }));
-  };
-
-  const requestAuth = async (endpoint, body) => {
-    const response = await fetch(`${API_BASE_URL}/${endpoint}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-      },
-      body: JSON.stringify(body),
-    });
-
-    const text = await response.text();
-    let payload = null;
-
-    if (text) {
-      try {
-        payload = JSON.parse(text);
-      } catch {
-        payload = text;
-      }
-    }
-
-    if (!response.ok) {
-      throw new Error(readErrorMessage(payload, 'The request could not be completed.'));
-    }
-
-    return payload || {};
-  };
+  function update(e) {
+    const { name, value } = e.target;
+    setForm((f) => ({ ...f, [name]: value }));
+  }
 
   const handleLogin = async (event) => {
     event.preventDefault();
@@ -73,38 +40,22 @@ function AuthPage({ onAuthenticated }) {
     setIsSubmitting(true);
 
     try {
-      const loginPayload = { ...loginForm };
-      if (loginPayload.email === 'admin' || loginPayload.email === 'Admin' || loginPayload.email === 'ADMIN') {
-        loginPayload.email = 'anthonyjr.decastro@gmail.com';
-      }
-      const payload = await requestAuth('signin', loginPayload);
-      onAuthenticated(payload, loginPayload.email || loginForm.email);
-    } catch (error) {
-      setStatus({ type: 'error', message: error.message });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
+      const payload = { ...form };
+      if (ALIASES[payload.email]) payload.email = ALIASES[payload.email];
 
-  const handleRegister = async (event) => {
-    event.preventDefault();
-    setStatus({ type: '', message: '' });
+      const response = await fetch(`${API_BASE_URL}/signin`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify(payload),
+      });
 
-    if (registerForm.password !== registerForm.confirmPassword) {
-      setStatus({ type: 'error', message: 'Passwords do not match.' });
-      return;
-    }
+      const text = await response.text();
+      let data = null;
+      if (text) { try { data = JSON.parse(text); } catch { data = text; } }
 
-    setIsSubmitting(true);
+      if (!response.ok) throw new Error(readErrorMessage(data, 'The request could not be completed.'));
 
-    try {
-      const body = {
-        name: registerForm.name,
-        email: registerForm.email,
-        password: registerForm.password,
-      };
-      const payload = await requestAuth('signup', body);
-      onAuthenticated(payload, registerForm.email, registerForm.name);
+      onAuthenticated(data || {}, payload.email || form.email);
     } catch (error) {
       setStatus({ type: 'error', message: error.message });
     } finally {
@@ -131,33 +82,9 @@ function AuthPage({ onAuthenticated }) {
         </div>
 
         <div className="mx-auto w-full max-w-xl rounded-[28px] bg-white p-5 shadow-2xl shadow-blue-900/10 sm:p-8">
-          <div className="mb-6 flex items-center justify-between gap-4">
-            <div>
-              <h2 className="text-3xl font-extrabold text-slate-900">{isLogin ? 'Sign in' : 'Create account'}</h2>
-              <p className="mt-1 text-sm text-slate-500">{isLogin ? 'Access your admin dashboard.' : 'Register a new admin account.'}</p>
-            </div>
-            <div className="flex rounded-2xl bg-slate-100 p-1 text-sm font-semibold">
-              <button
-                type="button"
-                className={`rounded-xl px-4 py-2 ${isLogin ? 'bg-white text-orange-500 shadow-sm' : 'text-slate-500'}`}
-                onClick={() => {
-                  setMode('login');
-                  setStatus({ type: '', message: '' });
-                }}
-              >
-                Login
-              </button>
-              <button
-                type="button"
-                className={`rounded-xl px-4 py-2 ${!isLogin ? 'bg-white text-orange-500 shadow-sm' : 'text-slate-500'}`}
-                onClick={() => {
-                  setMode('register');
-                  setStatus({ type: '', message: '' });
-                }}
-              >
-                Register
-              </button>
-            </div>
+          <div className="mb-6">
+            <h2 className="text-3xl font-extrabold text-slate-900">Sign in</h2>
+            <p className="mt-1 text-sm text-slate-500">Access your admin dashboard.</p>
           </div>
 
           {status.message && (
@@ -166,92 +93,39 @@ function AuthPage({ onAuthenticated }) {
             </div>
           )}
 
-          {isLogin ? (
-            <form className="space-y-4" onSubmit={handleLogin}>
-              <label className="block text-sm font-semibold text-slate-700">
-                Username / admin
-                <input
-                  className="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:border-orange-400 focus:ring-4 focus:ring-orange-100"
-                  name="email"
-                  type="text"
-                  autoComplete="username"
-                  value={loginForm.email}
-                  onChange={updateLogin}
-                  required
-                />
-              </label>
-              <label className="block text-sm font-semibold text-slate-700">
-                Password
-                <input
-                  className="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:border-orange-400 focus:ring-4 focus:ring-orange-100"
-                  name="password"
-                  type="password"
-                  autoComplete="current-password"
-                  value={loginForm.password}
-                  onChange={updateLogin}
-                  required
-                />
-              </label>
-              <button className="w-full rounded-2xl bg-orange-500 px-5 py-3 font-bold text-white shadow-lg shadow-orange-500/25 disabled:opacity-60" disabled={isSubmitting} type="submit">
-                {isSubmitting ? 'Signing in...' : 'Sign in'}
-              </button>
-            </form>
-          ) : (
-            <form className="space-y-4" onSubmit={handleRegister}>
-              <label className="block text-sm font-semibold text-slate-700">
-                Full name
-                <input
-                  className="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:border-orange-400 focus:ring-4 focus:ring-orange-100"
-                  name="name"
-                  autoComplete="name"
-                  value={registerForm.name}
-                  onChange={updateRegister}
-                  required
-                />
-              </label>
-              <label className="block text-sm font-semibold text-slate-700">
-                Email
-                <input
-                  className="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:border-orange-400 focus:ring-4 focus:ring-orange-100"
-                  name="email"
-                  type="email"
-                  autoComplete="email"
-                  value={registerForm.email}
-                  onChange={updateRegister}
-                  required
-                />
-              </label>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <label className="block text-sm font-semibold text-slate-700">
-                  Password
-                  <input
-                    className="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:border-orange-400 focus:ring-4 focus:ring-orange-100"
-                    name="password"
-                    type="password"
-                    autoComplete="new-password"
-                    value={registerForm.password}
-                    onChange={updateRegister}
-                    required
-                  />
-                </label>
-                <label className="block text-sm font-semibold text-slate-700">
-                  Confirm password
-                  <input
-                    className="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:border-orange-400 focus:ring-4 focus:ring-orange-100"
-                    name="confirmPassword"
-                    type="password"
-                    autoComplete="new-password"
-                    value={registerForm.confirmPassword}
-                    onChange={updateRegister}
-                    required
-                  />
-                </label>
-              </div>
-              <button className="w-full rounded-2xl bg-orange-500 px-5 py-3 font-bold text-white shadow-lg shadow-orange-500/25 disabled:opacity-60" disabled={isSubmitting} type="submit">
-                {isSubmitting ? 'Creating account...' : 'Create account'}
-              </button>
-            </form>
-          )}
+          <form className="space-y-4" onSubmit={handleLogin}>
+            <label className="block text-sm font-semibold text-slate-700">
+              Username / Email
+              <input
+                className="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:border-orange-400 focus:ring-4 focus:ring-orange-100"
+                name="email"
+                type="text"
+                autoComplete="username"
+                value={form.email}
+                onChange={update}
+                required
+              />
+            </label>
+            <label className="block text-sm font-semibold text-slate-700">
+              Password
+              <input
+                className="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:border-orange-400 focus:ring-4 focus:ring-orange-100"
+                name="password"
+                type="password"
+                autoComplete="current-password"
+                value={form.password}
+                onChange={update}
+                required
+              />
+            </label>
+            <button
+              className="w-full rounded-2xl bg-orange-500 px-5 py-3 font-bold text-white shadow-lg shadow-orange-500/25 disabled:opacity-60"
+              disabled={isSubmitting}
+              type="submit"
+            >
+              {isSubmitting ? 'Signing in...' : 'Sign in'}
+            </button>
+          </form>
         </div>
       </section>
     </main>
