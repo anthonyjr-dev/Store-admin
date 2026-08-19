@@ -8,8 +8,8 @@ import ProfilePage from './pages/ProfilePage.jsx';
 import NotificationsPage from './pages/NotificationsPage.jsx';
 import ProductsPage from './pages/ProductsPage.jsx';
 import UsersPage from './pages/UsersPage.jsx';
+import ReportsPage from './pages/ReportsPage.jsx';
 import Sidebar from './components/Sidebar.jsx';
-import BottomNav from './components/BottomNav.jsx';
 import { fetchAllOrders } from './api.js';
 import { connectSocket, disconnectSocket } from './socket.js';
 import { playNewOrderSound, playStatusUpdateSound, unlockAudio } from './sound.js';
@@ -30,7 +30,7 @@ function buildNotification(order, type) {
       id: `notif-${Date.now()}-${order.id}`,
       type: 'order',
       icon: 'fa-bag-shopping',
-      color: 'bg-orange-100 text-orange-600',
+      color: 'bg-[#f0b429]/15 text-[#f0b429]',
       title: `New Order #ORD-${String(order.id).padStart(3, '0')}`,
       body: `A new order of ₱${Number(order.total).toLocaleString()} was placed.`,
       time: `Just now · ${timeStr}`,
@@ -42,7 +42,7 @@ function buildNotification(order, type) {
     id: `notif-${Date.now()}-${order.id}`,
     type: 'status',
     icon: 'fa-circle-check',
-    color: 'bg-blue-100 text-blue-600',
+    color: 'bg-blue-500/15 text-blue-400',
     title: `Order #ORD-${String(order.id).padStart(3, '0')} updated`,
     body: `Status changed to ${order.status}.`,
     time: `Just now · ${timeStr}`,
@@ -139,13 +139,13 @@ export default function App() {
   const isBranchAdmin = session.user_type === 2;
 
   const navItems = [
-    { page: 'home',          label: 'Dashboard',     icon: 'fa-house' },
-    { page: 'orders',        label: 'Orders',         icon: 'fa-bag-shopping',   badge: pendingCount },
-    { page: 'products',      label: 'Products',       icon: 'fa-box-open' },
+    { page: 'home',          label: 'Orders',          icon: 'fa-bag-shopping',   badge: pendingCount },
+    { page: 'products',      label: 'Menu',             icon: 'fa-box-open' },
+    { page: 'reports',       label: 'Reports',          icon: 'fa-chart-bar' },
     ...(isSuperAdmin ? [{ page: 'stores', label: 'Branches', icon: 'fa-store' }] : []),
     ...(isSuperAdmin ? [{ page: 'users', label: 'Users', icon: 'fa-users' }] : []),
-    { page: 'notifications', label: 'Alerts',         icon: 'fa-bell',           badge: unreadAlerts },
-    { page: 'profile',       label: 'Profile',        icon: 'fa-user' },
+    { page: 'notifications', label: 'Alerts',           icon: 'fa-bell',           badge: unreadAlerts },
+    { page: 'profile',       label: 'Profile',          icon: 'fa-user' },
   ];
 
   function renderPage() {
@@ -158,6 +158,8 @@ export default function App() {
             orders={orders}
             loadingOrders={loadingOrders}
             onNavigate={setPage}
+            token={session.token}
+            onOrdersChange={handleOrdersChange}
           />
         );
       case 'orders':
@@ -169,7 +171,7 @@ export default function App() {
             onOrdersChange={handleOrdersChange}
           />
         );
-      case 'products':      return <ProductsPage token={session.token} branchId={session.branch_id} />;
+      case 'products':      return <ProductsPage token={session.token} branchId={session.branch_id} userType={session.user_type} />;
       case 'stores':        return <StoresPage token={session.token} />;
       case 'add-store':     return <AddStorePage onNavigate={setPage} />;
       case 'notifications':
@@ -179,6 +181,7 @@ export default function App() {
             onNotificationsChange={setNotifications}
           />
         );
+      case 'reports':       return <ReportsPage orders={orders} />;
       case 'users':         return <UsersPage token={session.token} />;
       case 'profile':       return <ProfilePage profile={session} onLogout={handleLogout} />;
       default:
@@ -195,46 +198,74 @@ export default function App() {
   }
 
   return (
-    <div className="flex min-h-screen">
-      <Sidebar navItems={navItems} activePage={page} onNavigate={setPage} storeName={session.name} />
+    <div className="flex min-h-screen bg-[#111111]">
+      <Sidebar
+        navItems={navItems}
+        activePage={page}
+        onNavigate={setPage}
+        storeName={session.name}
+        orders={orders}
+        pendingCount={pendingCount}
+        onLogout={handleLogout}
+      />
 
-      <div className="flex-1 flex flex-col min-w-0 overflow-x-hidden">
-        <header className="sticky top-0 z-10 flex items-center justify-between bg-white/80 px-4 py-3 shadow-sm backdrop-blur md:px-8">
-          <h1 className="text-lg font-bold text-orange-500 md:hidden">Store Admin</h1>
-          <div className="hidden md:block">
-            <p className="text-xl font-bold text-slate-800 capitalize">
-              {page === 'home' ? 'Dashboard' : page === 'add-store' ? 'Add Branch' : page.charAt(0).toUpperCase() + page.slice(1)}
-            </p>
+      <div className="flex min-w-0 flex-1 flex-col overflow-x-hidden">
+        {/* Mobile header */}
+        <header className="sticky top-0 z-10 bg-[#161616] md:hidden">
+          {/* Store name row */}
+          <div className="flex items-center justify-between border-b border-gray-800 px-4 pt-3 pb-2.5">
+            <div className="min-w-0">
+              <h1 className="truncate font-bold text-white text-sm leading-none">{session.name}</h1>
+              <div className="mt-1 flex items-center gap-1.5">
+                <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#4ade80]"></span>
+                <span className="text-[#f0b429] text-xs">
+                  Open · {pendingCount} new order{pendingCount !== 1 ? 's' : ''}
+                </span>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="shrink-0 rounded-xl border border-gray-700 bg-[#1e1e1e] px-3 py-2 text-xs font-semibold text-gray-300"
+            >
+              Sign out
+            </button>
           </div>
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => setPage('notifications')}
-              className="relative rounded-xl p-2 hover:bg-slate-100"
-            >
-              <i className="fa fa-bell text-slate-600"></i>
-              {unreadAlerts > 0 && (
-                <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-red-500"></span>
-              )}
-            </button>
-            <button
-              type="button"
-              onClick={() => setPage('profile')}
-              className="flex h-9 w-9 items-center justify-center rounded-full bg-orange-500 text-sm font-bold text-white"
-            >
-              {(session.name || session.email || 'A')[0].toUpperCase()}
-            </button>
+          {/* Scrollable tab bar */}
+          <div className="flex overflow-x-auto scrollbar-hide">
+            {navItems.map((item) => {
+              const active = page === item.page;
+              return (
+                <button
+                  key={item.page}
+                  type="button"
+                  onClick={() => setPage(item.page)}
+                  className={`relative shrink-0 flex items-center gap-1.5 px-4 py-3 text-sm font-semibold whitespace-nowrap transition-colors ${
+                    active ? 'text-white' : 'text-gray-500'
+                  }`}
+                >
+                  {item.label}
+                  {item.badge > 0 && (
+                    <span className="rounded-full bg-[#f0b429] px-1.5 py-0.5 text-[10px] font-bold leading-none text-black">
+                      {item.badge}
+                    </span>
+                  )}
+                  {active && (
+                    <span className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full bg-[#f0b429]" />
+                  )}
+                </button>
+              );
+            })}
           </div>
         </header>
 
-        <main className="flex-1 px-4 py-6 pb-24 md:px-8 md:pb-8">
-          <div className="mx-auto max-w-5xl">
+        <main className="flex-1 overflow-y-auto px-4 py-5 pb-6 md:px-6 md:py-6 md:pb-6">
+          <div className={page === 'home' ? '' : 'mx-auto max-w-5xl'}>
             {renderPage()}
           </div>
         </main>
       </div>
 
-      <BottomNav navItems={navItems} activePage={page} onNavigate={setPage} />
     </div>
   );
 }

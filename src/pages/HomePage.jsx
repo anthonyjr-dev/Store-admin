@@ -1,168 +1,230 @@
-const STATUS_COLORS = {
-  pending:   'bg-amber-100 text-amber-700',
-  confirmed: 'bg-blue-100 text-blue-700',
-  preparing: 'bg-purple-100 text-purple-700',
-  ready:     'bg-green-100 text-green-700',
-  delivered: 'bg-gray-100 text-gray-600',
-  cancelled: 'bg-red-100 text-red-600',
+import { useState } from 'react';
+import { updateOrderStatus } from '../api.js';
+
+const COLUMNS = [
+  { id: 'new',       label: 'New',       dot: '#60a5fa', badgeCls: 'bg-blue-500',   statuses: ['pending', 'confirmed'] },
+  { id: 'preparing', label: 'Preparing', dot: '#f97316', badgeCls: 'bg-orange-500', statuses: ['preparing'] },
+  { id: 'ready',     label: 'Ready',     dot: '#4ade80', badgeCls: 'bg-green-500',  statuses: ['ready'] },
+  { id: 'completed', label: 'Completed', dot: '#6b7280', badgeCls: 'bg-gray-500',   statuses: ['delivered'] },
+];
+
+const ACTION = {
+  pending:   { label: 'Start Preparing', next: 'preparing' },
+  confirmed: { label: 'Start Preparing', next: 'preparing' },
+  preparing: { label: 'Mark Ready',      next: 'ready' },
+  ready:     { label: 'Complete',        next: 'delivered' },
 };
 
-function StatCard({ icon, label, value, sub, color }) {
+function formatTime(iso) {
+  if (!iso) return '';
+  return new Date(iso).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' });
+}
+
+function TypeBadge({ type }) {
+  const t = (type || '').toLowerCase();
+  if (!t) return null;
+  const isDelivery = t === 'delivery';
   return (
-    <div className="card p-5">
-      <div className={`mb-3 flex h-10 w-10 items-center justify-center rounded-xl ${color}`}>
-        <i className={`fa ${icon} text-white`}></i>
-      </div>
-      <p className="text-sm text-slate-500">{label}</p>
-      <h3 className="mt-1 text-3xl font-extrabold text-slate-800">{value}</h3>
-      {sub && <p className="mt-1 text-xs text-slate-400">{sub}</p>}
-    </div>
+    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium
+      ${isDelivery ? 'bg-orange-950/60 text-orange-400' : 'bg-green-950/60 text-green-400'}`}>
+      {isDelivery ? '🛺' : '🛵'} {isDelivery ? 'Delivery' : 'Pickup'}
+    </span>
   );
 }
 
-function OrderRow({ order, onNavigate }) {
-  const itemSummary = order.items?.length
-    ? order.items.map((i) => `${i.name} x${i.qty}`).join(', ')
-    : '—';
+function OrderCard({ order, onAdvance, advancing }) {
+  const action = ACTION[order.status];
+  const customerName = order.customer_name || order.customerName || order.user?.name || null;
+  const orderType = order.type || order.order_type || null;
 
   return (
-    <div className="flex flex-col gap-3 rounded-2xl border border-slate-100 p-4 sm:flex-row sm:items-center sm:justify-between">
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <span className="font-bold text-slate-800">
-            #ORD-{String(order.id).padStart(3, '0')}
+    <div className="overflow-hidden rounded-2xl bg-[#1e1e1e]">
+      {/* Card header */}
+      <div className="p-4 pb-3">
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+            <span className="font-bold text-white text-[15px]">ORD-{order.id}</span>
+            {orderType && <TypeBadge type={orderType} />}
+          </div>
+          <span className="shrink-0 text-[#f0b429] text-lg font-black">
+            ₱{Number(order.total).toLocaleString()}
           </span>
-          <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${STATUS_COLORS[order.status] || 'bg-slate-100 text-slate-600'}`}>
-            {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
-          </span>
         </div>
-        <p className="mt-0.5 text-sm text-slate-500 truncate">User #{order.userId}</p>
-        <p className="text-xs text-slate-400 truncate">{itemSummary}</p>
-      </div>
-      <div className="flex items-center gap-3">
-        <span className="font-bold text-slate-800">₱{Number(order.total).toLocaleString()}</span>
-        <button
-          type="button"
-          onClick={() => onNavigate('orders')}
-          className="rounded-xl bg-orange-50 px-3 py-1.5 text-sm font-semibold text-orange-600 hover:bg-orange-100"
-        >
-          Manage
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function HomePage({ profile, pendingCount, orders = [], loadingOrders, onNavigate }) {
-  const todayOrders = orders.filter((o) => {
-    const d = new Date(o.createdAt);
-    const now = new Date();
-    return d.toDateString() === now.toDateString();
-  });
-
-  const todayRevenue = todayOrders
-    .filter((o) => o.status !== 'cancelled')
-    .reduce((sum, o) => sum + Number(o.total), 0);
-
-  const recentPending = orders.filter((o) => o.status === 'pending').slice(0, 3);
-
-  const stats = [
-    { icon: 'fa-clock',        label: 'Pending Orders',   value: pendingCount,                       sub: 'Needs attention',      color: 'bg-amber-500' },
-    { icon: 'fa-bag-shopping', label: "Today's Orders",   value: todayOrders.length,                 sub: `${orders.length} total`, color: 'bg-orange-500' },
-    { icon: 'fa-peso-sign',    label: "Today's Revenue",  value: `₱${todayRevenue.toLocaleString()}`, sub: 'Confirmed orders',     color: 'bg-emerald-500' },
-    { icon: 'fa-list',         label: 'Total Orders',     value: orders.length,                      sub: 'All time',             color: 'bg-blue-500' },
-  ];
-
-  return (
-    <section className="space-y-6">
-      <div className="rounded-[24px] bg-gradient-to-r from-gray-900 to-gray-700 p-6 text-white shadow-xl">
-        <div className="flex items-start justify-between">
-          <div>
-            <p className="text-sm text-gray-400">Welcome back</p>
-            <h2 className="text-2xl font-extrabold">{profile.name || 'Admin'}</h2>
-            <p className="mt-1 text-sm text-gray-400">{profile.email}</p>
-          </div>
-          <div className="text-right">
-            <p className="text-xs text-gray-400">Today</p>
-            <p className="text-sm font-semibold text-orange-400">
-              {new Date().toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric' })}
-            </p>
-          </div>
-        </div>
-        <div className="mt-5 flex gap-3">
-          <button
-            type="button"
-            onClick={() => onNavigate('orders')}
-            className="rounded-2xl bg-orange-500 px-5 py-2.5 text-sm font-bold hover:bg-orange-600"
-          >
-            <i className="fa fa-bell mr-2"></i>View Orders
-          </button>
-          <button
-            type="button"
-            onClick={() => onNavigate('stores')}
-            className="rounded-2xl bg-white/10 px-5 py-2.5 text-sm font-bold hover:bg-white/20"
-          >
-            <i className="fa fa-store mr-2"></i>Manage Branches
-          </button>
-        </div>
+        <p className="mt-1.5 text-sm text-gray-500">
+          {customerName || `Customer #${order.userId}`} · {formatTime(order.createdAt)}
+        </p>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        {stats.map((s) => <StatCard key={s.label} {...s} />)}
-      </div>
-
-      <div className="card p-6">
-        <div className="mb-4 flex items-center justify-between">
-          <h3 className="text-xl font-bold">Pending Orders</h3>
-          <button
-            type="button"
-            onClick={() => onNavigate('orders')}
-            className="text-sm font-semibold text-orange-500 hover:underline"
-          >
-            View all →
-          </button>
-        </div>
-        {loadingOrders ? (
-          <div className="py-8 text-center text-slate-400">
-            <i className="fa fa-spinner fa-spin text-2xl"></i>
-            <p className="mt-2 text-sm">Loading orders…</p>
-          </div>
-        ) : recentPending.length === 0 ? (
-          <div className="py-8 text-center text-slate-400">
-            <i className="fa fa-check-circle text-3xl opacity-30"></i>
-            <p className="mt-2 text-sm">No pending orders</p>
-          </div>
+      {/* Items */}
+      <div className="border-t border-gray-800 px-4 py-3 space-y-1.5">
+        {order.items?.length ? (
+          order.items.map((item, i) => (
+            <div key={i} className="flex items-center justify-between gap-2 text-sm">
+              <span className="text-gray-300 truncate">{item.name} × {item.qty}</span>
+              {item.price != null && (
+                <span className="shrink-0 text-gray-500">
+                  ₱{Number(item.price * item.qty).toLocaleString()}
+                </span>
+              )}
+            </div>
+          ))
         ) : (
-          <div className="space-y-3">
-            {recentPending.map((order) => (
-              <OrderRow key={order.id} order={order} onNavigate={onNavigate} />
-            ))}
-          </div>
+          <p className="text-sm text-gray-600">—</p>
         )}
       </div>
 
-      <div>
-        <h3 className="mb-4 text-xl font-bold">Quick Actions</h3>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {[
-            { icon: 'fa-plus',      label: 'Add Branch',  page: 'stores' },
-            { icon: 'fa-list-check', label: 'All Orders', page: 'orders' },
-            { icon: 'fa-bell',      label: 'Alerts',      page: 'notifications' },
-            { icon: 'fa-user',      label: 'Profile',     page: 'profile' },
-          ].map((item) => (
-            <button
-              key={item.label}
-              type="button"
-              onClick={() => onNavigate(item.page)}
-              className="card flex flex-col items-center p-5 transition hover:shadow-md"
-            >
-              <i className={`fa ${item.icon} text-2xl text-orange-500`}></i>
-              <p className="mt-2 text-sm font-medium text-slate-700">{item.label}</p>
-            </button>
-          ))}
+      {/* Action button */}
+      {action && (
+        <div className="px-4 pb-4 pt-2">
+          <button
+            type="button"
+            disabled={advancing === order.id}
+            onClick={() => onAdvance(order.id, action.next)}
+            className="w-full rounded-2xl bg-[#f0b429] py-3 text-sm font-bold text-black transition-colors hover:bg-[#e0a820] disabled:opacity-50"
+          >
+            {advancing === order.id ? 'Updating…' : `${action.label} →`}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function KanbanColumn({ column, orders, onAdvance, advancing }) {
+  const colOrders = orders.filter((o) => column.statuses.includes(o.status));
+  return (
+    <div className="flex min-w-0 flex-col">
+      {/* Column header */}
+      <div className="mb-4 flex items-center gap-2">
+        <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: column.dot }}></span>
+        <span className="font-bold text-white">{column.label}</span>
+        <span className={`ml-auto flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-white ${column.badgeCls}`}>
+          {colOrders.length}
+        </span>
+      </div>
+
+      {/* Cards */}
+      <div className="flex flex-col gap-3">
+        {colOrders.length === 0 ? (
+          <div className="rounded-2xl border border-gray-800 p-6 text-center text-sm text-gray-700">
+            No orders
+          </div>
+        ) : (
+          colOrders.map((o) => (
+            <OrderCard key={o.id} order={o} onAdvance={onAdvance} advancing={advancing} />
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+function HomePage({ profile, pendingCount, orders = [], loadingOrders, token, onOrdersChange }) {
+  const [advancing, setAdvancing] = useState(null);
+  const [mobileCol, setMobileCol] = useState('new');
+
+  const todayOrders = orders.filter((o) => {
+    const d = new Date(o.createdAt);
+    return d.toDateString() === new Date().toDateString();
+  });
+
+  async function advanceOrder(id, status) {
+    setAdvancing(id);
+    try {
+      const updated = await updateOrderStatus(id, status, token);
+      onOrdersChange(orders.map((o) => (o.id === updated.id ? { ...o, ...updated } : o)));
+    } catch {
+      // keep previous state on error
+    } finally {
+      setAdvancing(null);
+    }
+  }
+
+  const now = new Date();
+  const dateStr = now.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' });
+  const timeStr = now.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' });
+
+  if (loadingOrders) {
+    return (
+      <div className="flex h-64 items-center justify-center">
+        <i className="fa fa-spinner fa-spin text-3xl text-gray-600"></i>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      {/* Desktop header */}
+      <div className="mb-6 hidden items-start justify-between md:flex">
+        <div>
+          <h1 className="text-3xl font-bold text-white">Order Board</h1>
+          <p className="mt-1 text-gray-500">{todayOrders.length} total orders today</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-gray-500">{dateStr} · {timeStr}</span>
+          <span className="flex items-center gap-1.5 rounded-full bg-green-950/60 px-3 py-1.5 text-sm font-semibold text-green-400">
+            <span className="h-2 w-2 rounded-full bg-green-400"></span>
+            Open
+          </span>
         </div>
       </div>
-    </section>
+
+      {/* Desktop kanban — 4 columns */}
+      <div className="hidden grid-cols-4 gap-5 md:grid">
+        {COLUMNS.map((col) => (
+          <KanbanColumn
+            key={col.id}
+            column={col}
+            orders={orders}
+            onAdvance={advanceOrder}
+            advancing={advancing}
+          />
+        ))}
+      </div>
+
+      {/* Mobile — tab switcher */}
+      <div className="md:hidden">
+        {/* Column tabs */}
+        <div className="flex gap-2 overflow-x-auto pb-3 scrollbar-hide">
+          {COLUMNS.map((col) => {
+            const count = orders.filter((o) => col.statuses.includes(o.status)).length;
+            const active = mobileCol === col.id;
+            return (
+              <button
+                key={col.id}
+                type="button"
+                onClick={() => setMobileCol(col.id)}
+                className={`flex shrink-0 items-center gap-2 rounded-2xl border px-4 py-2.5 text-sm font-semibold transition-colors
+                  ${active
+                    ? 'border-[#f0b429]/40 bg-[#1e1e1e] text-white'
+                    : 'border-gray-800 bg-transparent text-gray-600'}`}
+              >
+                <span className="text-base font-black">{count}</span>
+                <span>{col.label}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Active column orders */}
+        <div className="mt-3 flex flex-col gap-3">
+          {(() => {
+            const col = COLUMNS.find((c) => c.id === mobileCol);
+            const colOrders = orders.filter((o) => col.statuses.includes(o.status));
+            if (!colOrders.length) {
+              return (
+                <div className="rounded-2xl border border-gray-800 p-10 text-center text-sm text-gray-700">
+                  No {col.label.toLowerCase()} orders
+                </div>
+              );
+            }
+            return colOrders.map((o) => (
+              <OrderCard key={o.id} order={o} onAdvance={advanceOrder} advancing={advancing} />
+            ));
+          })()}
+        </div>
+      </div>
+    </div>
   );
 }
 

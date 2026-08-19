@@ -1,133 +1,131 @@
 import { useState } from 'react';
+import logo from '../assets/logo.png';
 
-const API_BASE_URL = 'https://apigateway.webtour.ph/auth';
+const LOGIN_URL = 'https://apigateway.webtour.ph/auth/dashboard/login';
 
-const ALIASES = {
-  admin: 'anthonyjr.decastro@gmail.com',
-  Admin: 'anthonyjr.decastro@gmail.com',
-  ADMIN: 'anthonyjr.decastro@gmail.com',
-  superadmin: 'anthonyjr.decastro@gmail.com',
-  Superadmin: 'anthonyjr.decastro@gmail.com',
-  SuperAdmin: 'anthonyjr.decastro@gmail.com',
-  SUPERADMIN: 'anthonyjr.decastro@gmail.com',
-  'super admin': 'anthonyjr.decastro@gmail.com',
-  'Super Admin': 'anthonyjr.decastro@gmail.com',
-  'SUPER ADMIN': 'anthonyjr.decastro@gmail.com',
-  makatistore: 'makatistore@butfirstcoffe.ph',
-  MakatiStore: 'makatistore@butfirstcoffe.ph',
-  MAKATISTORE: 'makatistore@butfirstcoffe.ph',
-};
+// user_type: 1=admin, 2=branch_admin, 3=superadmin
+const ALLOWED_TYPES = new Set([1, 2, 3]);
 
-const readErrorMessage = (payload, fallback) => {
-  if (!payload) return fallback;
-  if (typeof payload === 'string') return payload;
-  return payload.message || payload.error || payload.detail || fallback;
-};
+function readError(data, fallback) {
+  if (!data) return fallback;
+  if (typeof data === 'string') return data;
+  return data.message || data.error || data.detail || fallback;
+}
 
 function AuthPage({ onAuthenticated }) {
-  const [form, setForm] = useState({ email: '', password: '' });
-  const [status, setStatus] = useState({ type: '', message: '' });
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [form, setForm] = useState({ branch_code: '', password: '' });
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
 
   function update(e) {
     const { name, value } = e.target;
     setForm((f) => ({ ...f, [name]: value }));
   }
 
-  const handleLogin = async (event) => {
-    event.preventDefault();
-    setStatus({ type: '', message: '' });
-    setIsSubmitting(true);
-
+  async function handleLogin(e) {
+    e.preventDefault();
+    setError('');
+    setBusy(true);
     try {
-      const payload = { ...form };
-      if (ALIASES[payload.email]) payload.email = ALIASES[payload.email];
-
-      const response = await fetch(`${API_BASE_URL}/signin`, {
+      const res = await fetch(LOGIN_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ branch_code: form.branch_code, password: form.password }),
       });
 
-      const text = await response.text();
+      const text = await res.text();
       let data = null;
       if (text) { try { data = JSON.parse(text); } catch { data = text; } }
 
-      if (!response.ok) throw new Error(readErrorMessage(data, 'The request could not be completed.'));
+      if (!res.ok) throw new Error(readError(data, 'Login failed. Please check your credentials.'));
 
-      onAuthenticated(data || {}, payload.email || form.email);
-    } catch (error) {
-      setStatus({ type: 'error', message: error.message });
+      const userType = data?.user?.user_type ?? data?.user_type ?? null;
+      if (userType !== null && !ALLOWED_TYPES.has(Number(userType))) {
+        throw new Error('Access denied. This portal is for admin accounts only.');
+      }
+
+      onAuthenticated(data || {}, form.branch_code);
+    } catch (err) {
+      setError(err.message);
     } finally {
-      setIsSubmitting(false);
+      setBusy(false);
     }
-  };
+  }
 
   return (
-    <main className="auth-shell min-h-screen bg-[#fff7ed] px-4 py-8">
-      <section className="mx-auto grid min-h-[calc(100vh-4rem)] max-w-6xl items-center gap-8 lg:grid-cols-[0.9fr_1.1fr]">
-        <div className="hidden text-slate-900 lg:block">
-          <p className="text-sm font-bold uppercase tracking-[0.25em] text-orange-500">Store Admin</p>
-          <h1 className="mt-4 text-5xl font-extrabold leading-tight">Manage your branches and orders from one place.</h1>
-          <div className="mt-8 grid gap-3 text-sm text-slate-600">
-            <div className="flex items-center gap-3 rounded-2xl bg-white/80 p-4 shadow-sm">
-              <i className="fa fa-shield-halved text-xl text-orange-500"></i>
-              <span>Secure sign-in for store administrators.</span>
-            </div>
-            <div className="flex items-center gap-3 rounded-2xl bg-white/80 p-4 shadow-sm">
-              <i className="fa fa-bag-shopping text-xl text-orange-500"></i>
-              <span>Track orders, update status, and manage branches in real time.</span>
-            </div>
-          </div>
+    <main className="min-h-screen bg-[#0f0f0f] flex flex-col items-center justify-center px-4 py-10">
+
+      {/* Brand */}
+      <div className="text-center mb-8 select-none">
+        <img src={logo} alt="But First, Coffee" className="mx-auto h-20 w-auto object-contain" />
+        <div className="mt-5">
+          <span className="inline-block border border-[#f0b429]/70 text-[#f0b429] text-[10px] font-bold uppercase tracking-[0.25em] px-5 py-2 rounded-full">
+            Merchant Portal
+          </span>
         </div>
+      </div>
 
-        <div className="mx-auto w-full max-w-xl rounded-[28px] bg-white p-5 shadow-2xl shadow-blue-900/10 sm:p-8">
-          <div className="mb-6">
-            <h2 className="text-3xl font-extrabold text-slate-900">Sign in</h2>
-            <p className="mt-1 text-sm text-slate-500">Access your admin dashboard.</p>
+      {/* Card */}
+      <div className="w-full max-w-[360px] bg-[#1c1c1c] rounded-3xl p-7 shadow-2xl">
+        <h2 className="text-white text-2xl font-black uppercase tracking-wide mb-1">Branch Sign In</h2>
+        <p className="text-gray-500 text-sm mb-6">Access your branch orders and operations.</p>
+
+        {error && (
+          <div className="mb-5 rounded-xl p-3 text-sm bg-red-950/60 text-red-400 border border-red-900">
+            {error}
+          </div>
+        )}
+
+        <form className="space-y-5" onSubmit={handleLogin}>
+          <div>
+            <label className="block text-[10px] font-bold uppercase tracking-[0.2em] text-gray-400 mb-2">
+              Branch Code
+            </label>
+            <input
+              name="branch_code"
+              type="text"
+              autoComplete="username"
+              placeholder="e.g. BGC-001"
+              value={form.branch_code}
+              onChange={update}
+              required
+              className="w-full bg-[#272727] text-white rounded-2xl border border-[#3a3a3a] px-4 py-3.5 outline-none focus:border-[#f0b429] focus:ring-2 focus:ring-[#f0b429]/20 placeholder-gray-700 transition-colors"
+            />
           </div>
 
-          {status.message && (
-            <div className={`mb-5 rounded-2xl p-3 text-sm ${status.type === 'error' ? 'bg-red-50 text-red-700' : 'bg-blue-50 text-blue-700'}`}>
-              {status.message}
-            </div>
-          )}
-
-          <form className="space-y-4" onSubmit={handleLogin}>
-            <label className="block text-sm font-semibold text-slate-700">
-              Username / Email
-              <input
-                className="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:border-orange-400 focus:ring-4 focus:ring-orange-100"
-                name="email"
-                type="text"
-                autoComplete="username"
-                value={form.email}
-                onChange={update}
-                required
-              />
-            </label>
-            <label className="block text-sm font-semibold text-slate-700">
+          <div>
+            <label className="block text-[10px] font-bold uppercase tracking-[0.2em] text-gray-400 mb-2">
               Password
-              <input
-                className="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:border-orange-400 focus:ring-4 focus:ring-orange-100"
-                name="password"
-                type="password"
-                autoComplete="current-password"
-                value={form.password}
-                onChange={update}
-                required
-              />
             </label>
-            <button
-              className="w-full rounded-2xl bg-orange-500 px-5 py-3 font-bold text-white shadow-lg shadow-orange-500/25 disabled:opacity-60"
-              disabled={isSubmitting}
-              type="submit"
-            >
-              {isSubmitting ? 'Signing in...' : 'Sign in'}
-            </button>
-          </form>
+            <input
+              name="password"
+              type="password"
+              autoComplete="current-password"
+              value={form.password}
+              onChange={update}
+              required
+              className="w-full bg-[#272727] text-white rounded-2xl border border-[#3a3a3a] px-4 py-3.5 outline-none focus:border-[#f0b429] focus:ring-2 focus:ring-[#f0b429]/20 placeholder-gray-700 transition-colors"
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={busy}
+            className="w-full bg-[#f0b429] text-black font-black uppercase tracking-[0.15em] rounded-2xl py-4 text-sm disabled:opacity-50 hover:bg-[#e8ac24] active:bg-[#d9a020] transition-colors"
+          >
+            {busy ? 'Accessing…' : 'Access Branch'}
+          </button>
+        </form>
+
+        <div className="mt-5 text-center">
+          <span className="text-gray-600 text-xs cursor-default">Skip login (demo) →</span>
         </div>
-      </section>
+      </div>
+
+      {/* Footer */}
+      <p className="mt-8 text-gray-700 text-xs text-center">
+        Need access? Contact your BFC Area Manager.
+      </p>
     </main>
   );
 }

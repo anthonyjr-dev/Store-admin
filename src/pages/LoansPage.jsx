@@ -1,81 +1,109 @@
 import { useState } from 'react';
 import { updateOrderStatus } from '../api.js';
 
-const STATUS_FLOW = ['pending', 'confirmed', 'preparing', 'ready', 'delivered'];
+const FILTERS = [
+  { id: 'new',       label: 'New',       statuses: ['pending', 'confirmed'] },
+  { id: 'preparing', label: 'Preparing', statuses: ['preparing'] },
+  { id: 'ready',     label: 'Ready',     statuses: ['ready'] },
+  { id: 'completed', label: 'Completed', statuses: ['delivered'] },
+];
 
-const STATUS_COLORS = {
-  pending:   'bg-amber-100 text-amber-700',
-  confirmed: 'bg-blue-100 text-blue-700',
-  preparing: 'bg-purple-100 text-purple-700',
-  ready:     'bg-green-100 text-green-700',
-  delivered: 'bg-gray-100 text-gray-600',
-  cancelled: 'bg-red-100 text-red-600',
+const ACTION = {
+  pending:   { label: 'Start Preparing', next: 'preparing' },
+  confirmed: { label: 'Start Preparing', next: 'preparing' },
+  preparing: { label: 'Mark Ready',      next: 'ready' },
+  ready:     { label: 'Complete',        next: 'delivered' },
 };
-
-function nextStatus(status) {
-  const idx = STATUS_FLOW.indexOf(status);
-  return idx >= 0 && idx < STATUS_FLOW.length - 1 ? STATUS_FLOW[idx + 1] : null;
-}
-
-function actionLabel(status) {
-  const map = { pending: 'Accept', confirmed: 'Start Prep', preparing: 'Mark Ready', ready: 'Delivered' };
-  return map[status] || null;
-}
-
-function formatOrderId(id) {
-  return `#ORD-${String(id).padStart(3, '0')}`;
-}
 
 function formatTime(iso) {
   if (!iso) return '';
   return new Date(iso).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' });
 }
 
-function OrderCard({ order, onAdvance, onCancel, advancing }) {
-  const next = nextStatus(order.status);
-  const itemSummary = order.items?.length
-    ? order.items.map((i) => `${i.name} x${i.qty}`).join(', ')
-    : '—';
+function TypeBadge({ type }) {
+  const t = (type || '').toLowerCase();
+  if (!t) return null;
+  const isDelivery = t === 'delivery';
+  return (
+    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium
+      ${isDelivery ? 'bg-orange-950/60 text-orange-400' : 'bg-green-950/60 text-green-400'}`}>
+      {isDelivery ? '🛺' : '🛵'} {isDelivery ? 'Delivery' : 'Pickup'}
+    </span>
+  );
+}
+
+function StatusBadge({ status }) {
+  const map = {
+    pending:   'bg-blue-950/60 text-blue-400',
+    confirmed: 'bg-blue-950/60 text-blue-400',
+    preparing: 'bg-orange-950/60 text-orange-400',
+    ready:     'bg-green-950/60 text-green-400',
+    delivered: 'bg-gray-800 text-gray-400',
+    cancelled: 'bg-red-950/60 text-red-400',
+  };
+  const label = {
+    pending: 'New', confirmed: 'New', preparing: 'Preparing',
+    ready: 'Ready', delivered: 'Completed', cancelled: 'Cancelled',
+  };
+  return (
+    <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${map[status] || 'bg-gray-800 text-gray-400'}`}>
+      {label[status] || status}
+    </span>
+  );
+}
+
+function OrderCard({ order, onAdvance, advancing }) {
+  const action = ACTION[order.status];
+  const customerName = order.customer_name || order.customerName || order.user?.name || null;
+  const orderType = order.type || order.order_type || null;
 
   return (
-    <div className="card p-5 space-y-3">
-      <div className="flex items-start justify-between">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="font-bold text-slate-800">{formatOrderId(order.id)}</span>
-            <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${STATUS_COLORS[order.status] || 'bg-slate-100 text-slate-600'}`}>
-              {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
-            </span>
+    <div className="overflow-hidden rounded-2xl bg-[#1e1e1e]">
+      {/* Header */}
+      <div className="p-4 pb-3">
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+            <span className="font-bold text-white text-[15px]">ORD-{order.id}</span>
+            <StatusBadge status={order.status} />
+            {orderType && <TypeBadge type={orderType} />}
           </div>
-          <p className="text-sm text-slate-500">User #{order.userId}</p>
-          <p className="text-xs text-slate-400">{formatTime(order.createdAt)}</p>
+          <span className="shrink-0 text-[#f0b429] text-lg font-black">
+            ₱{Number(order.total).toLocaleString()}
+          </span>
         </div>
-        <span className="text-xl font-extrabold text-slate-800">₱{Number(order.total).toLocaleString()}</span>
+        <p className="mt-1.5 text-sm text-gray-500">
+          {customerName || `Customer #${order.userId}`} · {formatTime(order.createdAt)}
+        </p>
       </div>
-      <div className="rounded-xl bg-slate-50 p-3">
-        <p className="text-sm text-slate-700 truncate">{itemSummary}</p>
+
+      {/* Items */}
+      <div className="border-t border-gray-800 px-4 py-3 space-y-1.5">
+        {order.items?.length ? (
+          order.items.map((item, i) => (
+            <div key={i} className="flex items-center justify-between gap-2 text-sm">
+              <span className="text-gray-300 truncate">{item.name} × {item.qty}</span>
+              {item.price != null && (
+                <span className="shrink-0 text-gray-500">
+                  ₱{Number(item.price * item.qty).toLocaleString()}
+                </span>
+              )}
+            </div>
+          ))
+        ) : (
+          <p className="text-sm text-gray-600">—</p>
+        )}
       </div>
-      {order.status !== 'delivered' && order.status !== 'cancelled' && (
-        <div className="flex gap-2">
-          {next && (
-            <button
-              type="button"
-              disabled={advancing === order.id}
-              onClick={() => onAdvance(order.id, next)}
-              className="flex-1 rounded-2xl bg-orange-500 py-2 text-sm font-bold text-white hover:bg-orange-600 disabled:opacity-60"
-            >
-              {advancing === order.id ? (
-                <><i className="fa fa-spinner fa-spin mr-1"></i>Updating…</>
-              ) : actionLabel(order.status)}
-            </button>
-          )}
+
+      {/* Action */}
+      {action && (
+        <div className="px-4 pb-4 pt-2">
           <button
             type="button"
             disabled={advancing === order.id}
-            onClick={() => onCancel(order.id)}
-            className="rounded-2xl border border-red-200 px-4 py-2 text-sm font-semibold text-red-500 hover:bg-red-50 disabled:opacity-60"
+            onClick={() => onAdvance(order.id, action.next)}
+            className="w-full rounded-2xl bg-[#f0b429] py-3 text-sm font-bold text-black transition-colors hover:bg-[#e0a820] disabled:opacity-50"
           >
-            Cancel
+            {advancing === order.id ? 'Updating…' : `${action.label} →`}
           </button>
         </div>
       )}
@@ -84,88 +112,71 @@ function OrderCard({ order, onAdvance, onCancel, advancing }) {
 }
 
 function OrdersPage({ token, orders = [], loadingOrders, onOrdersChange }) {
-  const [filter, setFilter] = useState('all');
+  const [filter, setFilter] = useState('new');
   const [advancing, setAdvancing] = useState(null);
-
-  const tabs = ['all', 'pending', 'confirmed', 'preparing', 'ready', 'delivered', 'cancelled'];
-  const filtered = filter === 'all' ? orders : orders.filter((o) => o.status === filter);
 
   async function advanceOrder(id, status) {
     setAdvancing(id);
     try {
       const updated = await updateOrderStatus(id, status, token);
-      onOrdersChange(orders.map((o) => o.id === updated.id ? { ...o, ...updated } : o));
+      onOrdersChange(orders.map((o) => (o.id === updated.id ? { ...o, ...updated } : o)));
     } catch {
-      // silently keep old state on network error
+      // keep previous state on error
     } finally {
       setAdvancing(null);
     }
   }
 
-  async function cancelOrder(id) {
-    setAdvancing(id);
-    try {
-      const updated = await updateOrderStatus(id, 'cancelled', token);
-      onOrdersChange(orders.map((o) => o.id === updated.id ? { ...o, ...updated } : o));
-    } catch {
-      // silently keep old state on network error
-    } finally {
-      setAdvancing(null);
-    }
-  }
-
-  const pendingCount = orders.filter((o) => o.status === 'pending').length;
+  const activeFilter = FILTERS.find((f) => f.id === filter) || FILTERS[0];
+  const filtered = orders.filter((o) => activeFilter.statuses.includes(o.status));
 
   return (
-    <section className="space-y-6">
-      <div className="card p-6">
-        <h2 className="text-2xl font-bold">Orders</h2>
-        <p className="mt-1 text-slate-500">{pendingCount} pending · {orders.length} total</p>
-      </div>
-
-      <div className="tab-scroll-container">
-        <div className="flex gap-2 w-max">
-          {tabs.map((t) => (
+    <div>
+      {/* Status filter pills */}
+      <div className="mb-5 flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+        {FILTERS.map((f) => {
+          const count = orders.filter((o) => f.statuses.includes(o.status)).length;
+          const active = filter === f.id;
+          return (
             <button
-              key={t}
+              key={f.id}
               type="button"
-              onClick={() => setFilter(t)}
-              className={`shrink-0 rounded-2xl px-4 py-2 text-sm font-semibold capitalize transition whitespace-nowrap
-                ${filter === t ? 'bg-orange-500 text-white' : 'bg-white text-slate-600 shadow-sm hover:bg-orange-50'}`}
+              onClick={() => setFilter(f.id)}
+              className={`flex shrink-0 items-center gap-2 rounded-2xl border px-4 py-2.5 text-sm font-semibold transition-colors
+                ${active
+                  ? 'border-[#f0b429]/40 bg-[#1e1e1e] text-white'
+                  : 'border-gray-800 bg-transparent text-gray-600 hover:text-gray-400'}`}
             >
-              {t}
-              <span className="ml-1.5 text-xs opacity-60">
-                ({t === 'all' ? orders.length : orders.filter((o) => o.status === t).length})
-              </span>
+              <span className="text-base font-black">{count}</span>
+              <span>{f.label}</span>
             </button>
-          ))}
-        </div>
+          );
+        })}
       </div>
 
+      {/* Order list */}
       {loadingOrders ? (
-        <div className="card p-12 text-center text-slate-400">
-          <i className="fa fa-spinner fa-spin text-4xl"></i>
-          <p className="mt-3 font-semibold">Loading orders…</p>
+        <div className="flex h-48 items-center justify-center">
+          <i className="fa fa-spinner fa-spin text-3xl text-gray-600"></i>
         </div>
       ) : filtered.length === 0 ? (
-        <div className="card p-12 text-center text-slate-400">
-          <i className="fa fa-bag-shopping text-4xl opacity-30"></i>
-          <p className="mt-3 font-semibold">No {filter} orders</p>
+        <div className="rounded-2xl border border-gray-800 p-12 text-center">
+          <i className="fa fa-bag-shopping text-4xl text-gray-700"></i>
+          <p className="mt-3 text-sm text-gray-600">No {activeFilter.label.toLowerCase()} orders</p>
         </div>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <div className="flex flex-col gap-3 md:grid md:grid-cols-2 lg:grid-cols-3">
           {filtered.map((order) => (
             <OrderCard
               key={order.id}
               order={order}
               onAdvance={advanceOrder}
-              onCancel={cancelOrder}
               advancing={advancing}
             />
           ))}
         </div>
       )}
-    </section>
+    </div>
   );
 }
 

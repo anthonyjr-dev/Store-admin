@@ -3,6 +3,8 @@ import { fetchStores, fetchBranches, createBranch, updateBranch, deleteBranch } 
 
 const emptyForm = { store_id: '', name: '', address: '', phone: '', active: true };
 
+const INPUT = 'mt-1 w-full rounded-2xl border border-gray-700 bg-[#252525] px-4 py-2.5 text-white placeholder-gray-600 outline-none focus:border-[#f0b429] focus:ring-2 focus:ring-[#f0b429]/20';
+
 function BranchModal({ initial, stores, onSave, onClose, saving, saveError }) {
   const [form, setForm] = useState(
     initial
@@ -21,48 +23,46 @@ function BranchModal({ initial, stores, onSave, onClose, saving, saveError }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-      <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={onClose}>
+      <div className="w-full max-w-md rounded-3xl bg-[#1c1c1c] border border-gray-800 p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="mb-5 flex items-center justify-between">
-          <h3 className="text-xl font-bold text-slate-800">{initial ? 'Edit Branch' : 'Add Branch'}</h3>
-          <button type="button" onClick={onClose} className="rounded-xl p-2 hover:bg-slate-100">
-            <i className="fa fa-xmark text-slate-500"></i>
+          <h3 className="text-xl font-bold text-white">{initial ? 'Edit Branch' : 'Add Branch'}</h3>
+          <button type="button" onClick={onClose} className="rounded-xl p-2 hover:bg-white/8">
+            <i className="fa fa-xmark text-gray-400"></i>
           </button>
         </div>
-        {saveError && <div className="mb-4 rounded-2xl bg-red-50 p-3 text-sm text-red-700">{saveError}</div>}
+        {saveError && (
+          <div className="mb-4 rounded-2xl border border-red-900/50 bg-red-950/50 p-3 text-sm text-red-400">{saveError}</div>
+        )}
         <form className="space-y-4" onSubmit={submit}>
-          <label className="block text-sm font-semibold text-slate-700">
+          <label className="block text-sm font-semibold text-gray-300">
             Store
-            <select name="store_id" value={form.store_id} onChange={update} required
-              className="mt-1 w-full rounded-2xl border border-slate-200 px-4 py-2.5 outline-none focus:border-orange-400 focus:ring-4 focus:ring-orange-100">
+            <select name="store_id" value={form.store_id} onChange={update} required className={INPUT}>
               {stores.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
           </label>
-          <label className="block text-sm font-semibold text-slate-700">
+          <label className="block text-sm font-semibold text-gray-300">
             Branch Name
             <input name="name" required value={form.name} onChange={update}
-              placeholder="e.g. But First Coffee – Makati"
-              className="mt-1 w-full rounded-2xl border border-slate-200 px-4 py-2.5 outline-none focus:border-orange-400 focus:ring-4 focus:ring-orange-100" />
+              placeholder="e.g. But First Coffee – Makati" className={INPUT} />
           </label>
-          <label className="block text-sm font-semibold text-slate-700">
+          <label className="block text-sm font-semibold text-gray-300">
             Address
             <input name="address" value={form.address} onChange={update}
-              placeholder="Full address"
-              className="mt-1 w-full rounded-2xl border border-slate-200 px-4 py-2.5 outline-none focus:border-orange-400 focus:ring-4 focus:ring-orange-100" />
+              placeholder="Full address" className={INPUT} />
           </label>
-          <label className="block text-sm font-semibold text-slate-700">
+          <label className="block text-sm font-semibold text-gray-300">
             Phone
             <input name="phone" value={form.phone} onChange={update}
-              placeholder="+63 9xx xxx xxxx"
-              className="mt-1 w-full rounded-2xl border border-slate-200 px-4 py-2.5 outline-none focus:border-orange-400 focus:ring-4 focus:ring-orange-100" />
+              placeholder="+63 9xx xxx xxxx" className={INPUT} />
           </label>
-          <label className="flex items-center gap-3 text-sm font-semibold text-slate-700 cursor-pointer">
+          <label className="flex cursor-pointer items-center gap-3 text-sm font-semibold text-gray-300">
             <input type="checkbox" name="active" checked={form.active} onChange={update}
-              className="h-4 w-4 rounded accent-orange-500" />
+              className="h-4 w-4 rounded accent-[#f0b429]" />
             Active / Open
           </label>
           <button type="submit" disabled={saving}
-            className="w-full rounded-2xl bg-orange-500 py-3 font-bold text-white shadow-lg shadow-orange-500/25 disabled:opacity-60">
+            className="w-full rounded-2xl bg-[#f0b429] py-3 font-bold text-black disabled:opacity-50">
             {saving ? <><i className="fa fa-spinner fa-spin mr-2"></i>Saving…</> : (initial ? 'Save Changes' : 'Add Branch')}
           </button>
         </form>
@@ -73,31 +73,30 @@ function BranchModal({ initial, stores, onSave, onClose, saving, saveError }) {
 
 function BranchCard({ branch, storeName, onEdit, onDelete, onToggle, updating }) {
   return (
-    <div className={`card p-5 space-y-3 transition-opacity ${!branch.active ? 'opacity-60' : ''}`}>
+    <div className={`card p-5 space-y-3 transition-opacity ${!branch.active ? 'opacity-50' : ''}`}>
       <div className="flex items-start justify-between gap-3">
-        <div className="flex-1 min-w-0">
-          <h4 className="font-bold text-slate-800 truncate">{branch.name}</h4>
-          <p className="text-xs text-orange-500 font-medium">{storeName}</p>
-          {branch.address && <p className="mt-1 text-sm text-slate-500 break-words">{branch.address}</p>}
-          {branch.phone && <p className="text-xs text-slate-400"><i className="fa fa-phone mr-1"></i>{branch.phone}</p>}
+        <div className="min-w-0 flex-1">
+          <h4 className="truncate font-bold text-white">{branch.name}</h4>
+          <p className="text-xs font-medium text-[#f0b429]">{storeName}</p>
+          {branch.address && <p className="mt-1 break-words text-sm text-gray-500">{branch.address}</p>}
+          {branch.phone && <p className="text-xs text-gray-600"><i className="fa fa-phone mr-1"></i>{branch.phone}</p>}
         </div>
-        <button type="button" onClick={() => onToggle(branch)}
-          disabled={updating === branch.id}
-          className={`shrink-0 rounded-full px-3 py-1 text-xs font-bold disabled:opacity-60
-            ${branch.active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
+        <button type="button" onClick={() => onToggle(branch)} disabled={updating === branch.id}
+          className={`shrink-0 rounded-full px-3 py-1 text-xs font-bold disabled:opacity-50
+            ${branch.active ? 'bg-green-950/60 text-green-400' : 'bg-red-950/60 text-red-400'}`}>
           {updating === branch.id ? <i className="fa fa-spinner fa-spin"></i> : (branch.active ? 'Open' : 'Closed')}
         </button>
       </div>
-      <div className="flex gap-2 border-t pt-3">
-        <span className="flex-1 text-xs text-slate-400">
-          <i className="fa fa-hashtag mr-1"></i>Branch ID: {branch.id}
+      <div className="flex gap-2 border-t border-gray-800 pt-3">
+        <span className="flex-1 text-xs text-gray-600">
+          <i className="fa fa-hashtag mr-1"></i>ID: {branch.id}
         </span>
         <button type="button" onClick={() => onEdit(branch)}
-          className="rounded-xl border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50">
+          className="rounded-xl border border-gray-700 px-3 py-1 text-xs font-semibold text-gray-400 hover:bg-white/5">
           <i className="fa fa-pen mr-1"></i>Edit
         </button>
         <button type="button" onClick={() => onDelete(branch)} disabled={updating === branch.id}
-          className="rounded-xl border border-red-100 px-3 py-1 text-xs font-semibold text-red-400 hover:bg-red-50 disabled:opacity-60">
+          className="rounded-xl border border-red-900/40 px-3 py-1 text-xs font-semibold text-red-500 hover:bg-red-950/30 disabled:opacity-50">
           <i className="fa fa-trash"></i>
         </button>
       </div>
@@ -122,23 +121,16 @@ function StoresPage({ token }) {
         const [s, b] = await Promise.all([fetchStores(), fetchBranches()]);
         setStores(Array.isArray(s) ? s : []);
         setBranches(Array.isArray(b) ? b : []);
-      } catch (e) {
-        setError(e.message);
-      } finally {
-        setLoading(false);
-      }
+      } catch (e) { setError(e.message); }
+      finally { setLoading(false); }
     }
     load();
   }, []);
 
-  function openModal(state) {
-    setSaveError('');
-    setModal(state);
-  }
+  function openModal(state) { setSaveError(''); setModal(state); }
 
   async function handleSave(form) {
-    setSaving(true);
-    setSaveError('');
+    setSaving(true); setSaveError('');
     try {
       if (modal.mode === 'add') {
         const created = await createBranch(form, token);
@@ -149,11 +141,8 @@ function StoresPage({ token }) {
         setBranches((prev) => prev.map((b) => b.id === updated.id ? updated : b));
       }
       setModal(null);
-    } catch (e) {
-      setSaveError(e.message);
-    } finally {
-      setSaving(false);
-    }
+    } catch (e) { setSaveError(e.message); }
+    finally { setSaving(false); }
   }
 
   async function handleToggle(branch) {
@@ -161,11 +150,8 @@ function StoresPage({ token }) {
     try {
       const updated = await updateBranch(branch.id, { active: !branch.active }, token);
       setBranches((prev) => prev.map((b) => b.id === updated.id ? updated : b));
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setUpdating(null);
-    }
+    } catch (e) { setError(e.message); }
+    finally { setUpdating(null); }
   }
 
   async function handleDelete(branch) {
@@ -174,11 +160,8 @@ function StoresPage({ token }) {
     try {
       await deleteBranch(branch.id, token);
       setBranches((prev) => prev.filter((b) => b.id !== branch.id));
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setUpdating(null);
-    }
+    } catch (e) { setError(e.message); }
+    finally { setUpdating(null); }
   }
 
   function storeNameFor(store_id) {
@@ -189,19 +172,19 @@ function StoresPage({ token }) {
     <section className="space-y-6">
       <div className="card p-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
-          <h2 className="text-2xl font-bold">Stores & Branches</h2>
-          <p className="mt-1 text-slate-500">
+          <h2 className="text-2xl font-bold text-white">Stores & Branches</h2>
+          <p className="mt-1 text-gray-500">
             {branches.filter((b) => b.active).length} open · {branches.length} total
           </p>
         </div>
         <button type="button" onClick={() => openModal({ mode: 'add' })}
-          className="rounded-2xl bg-orange-500 px-5 py-2.5 text-sm font-bold text-white hover:bg-orange-600">
+          className="rounded-2xl bg-[#f0b429] px-5 py-2.5 text-sm font-bold text-black hover:bg-[#e0a820]">
           <i className="fa fa-plus mr-2"></i>Add Branch
         </button>
       </div>
 
       {error && (
-        <div className="rounded-2xl bg-red-50 p-4 text-sm text-red-700 flex items-center justify-between">
+        <div className="flex items-center justify-between rounded-2xl border border-red-900/50 bg-red-950/50 p-4 text-sm text-red-400">
           {error}
           <button type="button" onClick={() => setError('')} className="ml-3 font-bold">✕</button>
         </div>
@@ -210,10 +193,11 @@ function StoresPage({ token }) {
       {stores.length > 0 && (
         <div className="flex flex-wrap gap-2">
           {stores.map((s) => (
-            <div key={s.id} className="flex items-center gap-2 rounded-2xl bg-white px-4 py-2 shadow-sm">
-              <i className="fa fa-store text-orange-400"></i>
-              <span className="text-sm font-semibold text-slate-700">{s.name}</span>
-              <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${s.active ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
+            <div key={s.id} className="flex items-center gap-2 rounded-2xl border border-gray-800 bg-[#1e1e1e] px-4 py-2">
+              <i className="fa fa-store text-[#f0b429]"></i>
+              <span className="text-sm font-semibold text-gray-200">{s.name}</span>
+              <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold
+                ${s.active ? 'bg-green-950/60 text-green-400' : 'bg-[#252525] text-gray-600'}`}>
                 {s.active ? 'Active' : 'Inactive'}
               </span>
             </div>
@@ -222,15 +206,15 @@ function StoresPage({ token }) {
       )}
 
       {loading ? (
-        <div className="card p-12 text-center text-slate-400">
-          <i className="fa fa-spinner fa-spin text-4xl"></i>
-          <p className="mt-3 font-semibold">Loading branches…</p>
+        <div className="card p-12 text-center">
+          <i className="fa fa-spinner fa-spin text-4xl text-gray-600"></i>
+          <p className="mt-3 font-semibold text-gray-500">Loading branches…</p>
         </div>
       ) : branches.length === 0 ? (
-        <div className="card p-12 text-center text-slate-400">
-          <i className="fa fa-store text-4xl opacity-30"></i>
-          <p className="mt-3 font-semibold">No branches yet</p>
-          <p className="text-sm">Add your first branch to get started.</p>
+        <div className="card p-12 text-center">
+          <i className="fa fa-store text-4xl text-gray-700"></i>
+          <p className="mt-3 font-semibold text-gray-500">No branches yet</p>
+          <p className="text-sm text-gray-600">Add your first branch to get started.</p>
         </div>
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
