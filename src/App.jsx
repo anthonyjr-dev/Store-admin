@@ -110,6 +110,7 @@ export default function App() {
       name: payload.user?.name || name || email.split('@')[0],
       id: payload.user?.id || null,
       branch_id: payload.user?.branch_id ?? null,
+      user_type: payload.user?.user_type || payload.user_type || null,
     };
     saveSession(profile);
     setSession(profile);
@@ -134,13 +135,14 @@ export default function App() {
   const pendingCount = orders.filter((o) => o.status === 'pending').length;
   const unreadAlerts = notifications.filter((n) => !n.read).length;
 
-  const isSuperAdmin = session.branch_id === null || session.branch_id === undefined;
+  const isSuperAdmin = session.branch_id === null || session.branch_id === undefined || session.user_type === 3;
+  const isBranchAdmin = session.user_type === 2;
 
   const navItems = [
     { page: 'home',          label: 'Dashboard',     icon: 'fa-house' },
     { page: 'orders',        label: 'Orders',         icon: 'fa-bag-shopping',   badge: pendingCount },
     { page: 'products',      label: 'Products',       icon: 'fa-box-open' },
-    { page: 'stores',        label: 'Branches',       icon: 'fa-store' },
+    ...(isSuperAdmin ? [{ page: 'stores', label: 'Branches', icon: 'fa-store' }] : []),
     ...(isSuperAdmin ? [{ page: 'users', label: 'Users', icon: 'fa-users' }] : []),
     { page: 'notifications', label: 'Alerts',         icon: 'fa-bell',           badge: unreadAlerts },
     { page: 'profile',       label: 'Profile',        icon: 'fa-user' },

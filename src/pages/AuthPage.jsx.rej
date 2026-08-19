@@ -1,0 +1,14 @@
+--- AuthPage.jsx
++++ AuthPage.jsx
+@@ -13,9 +13,9 @@
+   'Super Admin': 'anthonyjr.decastro@gmail.com',
+   'SUPER ADMIN': 'anthonyjr.decastro@gmail.com',
+   makatistore: 'makatistore@butfirstcoffee.ph',
+-  MakatiStore: 'makatistore@butfirstcoffe.ph',
+-  MAKATISTORE: 'makatistore@butfirstcoffe.ph',
++  MakatiStore: 'makatistore@butfirstcoffee.ph',
++  MAKATISTORE: 'makatistore@butfirstcoffee.ph',
+ };
+ 
+ const readErrorMessage = (payload, fallback) => {
+ 
