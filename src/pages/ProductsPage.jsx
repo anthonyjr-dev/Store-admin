@@ -142,6 +142,85 @@ function ProductModal({ initial, onSave, onClose, saving, saveError, onUpload })
   );
 }
 
+function ToggleSwitch({ checked, onChange, disabled }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      disabled={disabled}
+      onClick={onChange}
+      className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors duration-200 focus:outline-none disabled:opacity-40
+        ${checked ? 'bg-[#f0b429]' : 'bg-gray-700'}`}
+    >
+      <span
+        className={`inline-block h-5 w-5 rounded-full bg-white shadow transition-transform duration-200
+          ${checked ? 'translate-x-6' : 'translate-x-1'}`}
+      />
+    </button>
+  );
+}
+
+function BranchMenuView({ products, onToggleAvailable, updating }) {
+  const categoryOrder = CATEGORIES.filter((c) => c !== 'All');
+  const grouped = categoryOrder
+    .map((cat) => ({ cat, items: products.filter((p) => p.category === cat) }))
+    .filter(({ items }) => items.length > 0);
+
+  if (grouped.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 text-center">
+        <i className="fa fa-box-open text-4xl text-gray-700"></i>
+        <p className="mt-3 font-semibold text-gray-500">No menu items</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {grouped.map(({ cat, items }) => (
+        <div key={cat}>
+          <p className="mb-3 px-1 text-xs font-semibold tracking-widest text-gray-500 uppercase">{cat}</p>
+          <div className="space-y-2">
+            {items.map((product) => (
+              <div
+                key={product.id}
+                className="flex items-center gap-3 rounded-2xl bg-[#1c1c1c] p-3"
+              >
+                <div className="h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-[#2a2a2a]">
+                  {product.image ? (
+                    <img src={product.image} alt={product.name} className="h-full w-full object-cover" />
+                  ) : (
+                    <div className="flex h-full items-center justify-center">
+                      <i className="fa fa-image text-xl text-gray-700"></i>
+                    </div>
+                  )}
+                </div>
+
+                <div className="min-w-0 flex-1">
+                  <p className="font-bold text-white leading-tight">{product.name}</p>
+                  <p className="mt-0.5 text-sm font-semibold text-[#f0b429]">₱{Number(product.price).toLocaleString()}</p>
+                </div>
+
+                <div className="flex shrink-0 flex-col items-end gap-1.5">
+                  <span className={`text-xs font-semibold ${product.available ? 'text-green-400' : 'text-gray-600'}`}>
+                    {product.available ? 'Available' : 'Unavailable'}
+                  </span>
+                  <ToggleSwitch
+                    checked={product.available}
+                    onChange={() => onToggleAvailable(product)}
+                    disabled={updating === product.id}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function ProductCard({ product, onEdit, onDelete, onToggleAvailable, updating, isSuperAdmin }) {
   return (
     <div className={`card overflow-hidden transition-opacity ${!product.available ? 'opacity-50' : ''}`}>
@@ -204,14 +283,14 @@ function ProductsPage({ token, branchId, userType }) {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await fetchProducts(category, branchId);
+      const data = await fetchProducts('All', branchId);
       setProducts(Array.isArray(data) ? data : []);
     } catch (e) {
       setError(e.message);
     } finally {
       setLoading(false);
     }
-  }, [category, branchId]);
+  }, [branchId]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -259,7 +338,41 @@ function ProductsPage({ token, branchId, userType }) {
     finally { setUpdating(null); }
   }
 
+  const isBranchAdmin = userType === 2;
   const displayed = category === 'All' ? products : products.filter((p) => p.category === category);
+
+  if (isBranchAdmin) {
+    return (
+      <section className="space-y-4">
+        <div className="flex items-center justify-between px-1">
+          <div>
+            <h2 className="text-2xl font-bold text-white">Menu</h2>
+            <p className="mt-0.5 text-sm text-gray-500">{products.length} items · {products.filter((p) => p.available).length} available</p>
+          </div>
+        </div>
+
+        {error && (
+          <div className="flex items-center justify-between rounded-2xl border border-red-900/50 bg-red-950/50 p-4 text-sm text-red-400">
+            {error}
+            <button type="button" onClick={() => setError('')} className="ml-3 font-bold">✕</button>
+          </div>
+        )}
+
+        {loading ? (
+          <div className="card p-12 text-center">
+            <i className="fa fa-spinner fa-spin text-4xl text-gray-600"></i>
+            <p className="mt-3 font-semibold text-gray-500">Loading menu…</p>
+          </div>
+        ) : (
+          <BranchMenuView
+            products={products}
+            onToggleAvailable={handleToggleAvailable}
+            updating={updating}
+          />
+        )}
+      </section>
+    );
+  }
 
   return (
     <section className="space-y-6">

@@ -32,40 +32,88 @@ function TypeBadge({ type }) {
   );
 }
 
+function ItemDetails({ item }) {
+  const size  = item.size;
+  const temp  = item.temperature || item.temp;
+  const sugar = item.sugar_level ?? item.sugarLevel ?? item.sugar;
+  const notes = item.notes || item.instructions || item.additional_instructions || item.special_instructions;
+
+  const hasDetails = size || temp || sugar != null || notes;
+
+  return (
+    <div className="mt-1.5 flex flex-wrap gap-1.5">
+      {!hasDetails && (
+        <span className="text-[11px] text-gray-700 italic">No customizations</span>
+      )}
+      {size && (
+        <span className="rounded-lg bg-[#252525] px-2 py-0.5 text-[11px] text-gray-400">
+          <i className="fa fa-cup-straw mr-1 text-gray-600"></i>{size}
+        </span>
+      )}
+      {temp && (
+        <span className="rounded-lg bg-[#252525] px-2 py-0.5 text-[11px] text-gray-400">
+          <i className={`fa mr-1 text-gray-600 ${(temp + '').toLowerCase().includes('hot') ? 'fa-fire' : 'fa-snowflake'}`}></i>{temp}
+        </span>
+      )}
+      {sugar != null && (
+        <span className="rounded-lg bg-[#252525] px-2 py-0.5 text-[11px] text-gray-400">
+          <i className="fa fa-droplet mr-1 text-gray-600"></i>Sugar {sugar}{typeof sugar === 'number' && sugar <= 100 ? '%' : ''}
+        </span>
+      )}
+      {notes && (
+        <span className="w-full rounded-lg bg-[#252525] px-2 py-1 text-[11px] text-amber-400/80 italic">
+          <i className="fa fa-comment-dots mr-1 not-italic"></i>{notes}
+        </span>
+      )}
+    </div>
+  );
+}
+
 function OrderCard({ order, onAdvance, advancing }) {
+  const [expanded, setExpanded] = useState(false);
   const action = ACTION[order.status];
   const customerName = order.customer_name || order.customerName || order.user?.name || null;
   const orderType = order.type || order.order_type || null;
 
   return (
     <div className="overflow-hidden rounded-2xl bg-[#1e1e1e]">
-      {/* Card header */}
-      <div className="p-4 pb-3">
+      {/* Card header — clickable to expand */}
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        className="w-full p-4 pb-3 text-left"
+      >
         <div className="flex items-start justify-between gap-2">
           <div className="flex flex-wrap items-center gap-1.5 min-w-0">
             <span className="font-bold text-white text-[15px]">ORD-{order.id}</span>
             {orderType && <TypeBadge type={orderType} />}
           </div>
-          <span className="shrink-0 text-[#f0b429] text-lg font-black">
-            ₱{Number(order.total).toLocaleString()}
-          </span>
+          <div className="flex shrink-0 items-center gap-2">
+            <span className="text-[#f0b429] text-lg font-black">
+              ₱{Number(order.total).toLocaleString()}
+            </span>
+            <i className={`fa fa-chevron-down text-xs text-gray-600 transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}></i>
+          </div>
         </div>
         <p className="mt-1.5 text-sm text-gray-500">
           {customerName || `Customer #${order.userId}`} · {formatTime(order.createdAt)}
         </p>
-      </div>
+      </button>
 
       {/* Items */}
-      <div className="border-t border-gray-800 px-4 py-3 space-y-1.5">
+      <div className="border-t border-gray-800 px-4 py-3 space-y-3">
         {order.items?.length ? (
           order.items.map((item, i) => (
-            <div key={i} className="flex items-center justify-between gap-2 text-sm">
-              <span className="text-gray-300 truncate">{item.name} × {item.qty}</span>
-              {item.price != null && (
-                <span className="shrink-0 text-gray-500">
-                  ₱{Number(item.price * item.qty).toLocaleString()}
-                </span>
-              )}
+            <div key={i}>
+              <div className="flex items-center justify-between gap-2 text-sm">
+                <span className="text-gray-300 truncate font-medium">{item.name} × {item.qty}</span>
+                {item.price != null && (
+                  <span className="shrink-0 text-gray-500">
+                    ₱{Number(item.price * item.qty).toLocaleString()}
+                  </span>
+                )}
+              </div>
+              {expanded && <ItemDetails item={item} />}
             </div>
           ))
         ) : (
