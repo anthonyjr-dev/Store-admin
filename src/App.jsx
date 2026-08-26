@@ -139,7 +139,7 @@ export default function App() {
   const isBranchAdmin = session.user_type === 2;
 
   const navItems = [
-    { page: 'home',          label: 'Orders',          icon: 'fa-bag-shopping',   badge: pendingCount },
+    { page: 'orders',      label: 'Orders',          icon: 'fa-bag-shopping',   badge: pendingCount },
     { page: 'products',      label: 'Menu',             icon: 'fa-box-open' },
     { page: 'reports',       label: 'Reports',          icon: 'fa-chart-bar' },
     ...(isSuperAdmin ? [{ page: 'stores', label: 'Branches', icon: 'fa-store' }] : []),
@@ -169,6 +169,7 @@ export default function App() {
             orders={orders}
             loadingOrders={loadingOrders}
             onOrdersChange={handleOrdersChange}
+            userType={session.user_type}
           />
         );
       case 'products':      return <ProductsPage token={session.token} branchId={session.branch_id} userType={session.user_type} />;
