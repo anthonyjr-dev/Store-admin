@@ -1,4 +1,4 @@
-const BASE = 'https://apigateway.webtour.ph';
+const BASE = 'https://api.butfirstcoffee.ph';
 
 async function apiFetch(path, token, options = {}) {
   const res = await fetch(`${BASE}${path}`, {
@@ -26,10 +26,10 @@ export function fetchAllOrders(token) {
   return apiFetch('/orders/admin/all', token);
 }
 
-export function updateOrderStatus(id, status, token) {
+export function updateOrderStatus(id, status, token, notes) {
   return apiFetch(`/orders/${id}/status`, token, {
     method: 'PATCH',
-    body: JSON.stringify({ status }),
+    body: JSON.stringify({ status, ...(notes !== undefined ? { notes } : {}) }),
   });
 }
 

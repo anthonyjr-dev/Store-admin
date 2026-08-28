@@ -8,7 +8,7 @@ export function getSocket() {
 
 export function connectSocket(token) {
   if (!socket) {
-    socket = io('https://apigateway.webtour.ph', {
+    socket = io('https://api.butfirstcoffee.ph', {
       auth: token ? { token } : {},
       transports: ['websocket', 'polling'],
       autoConnect: false,

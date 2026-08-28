@@ -11,6 +11,7 @@ import UsersPage from './pages/UsersPage.jsx';
 import ReportsPage from './pages/ReportsPage.jsx';
 import Sidebar from './components/Sidebar.jsx';
 import { fetchAllOrders } from './api.js';
+import GivePointsModal from './components/GivePointsModal.jsx';
 import { connectSocket, disconnectSocket } from './socket.js';
 import { playNewOrderSound, playStatusUpdateSound, unlockAudio } from './sound.js';
 
@@ -22,16 +23,22 @@ function loadSession() {
 function saveSession(data) { localStorage.setItem(SESSION_KEY, JSON.stringify(data)); }
 function clearSession() { localStorage.removeItem(SESSION_KEY); }
 
+// user_type 2 = branch admin, user_type 3 = super admin
+function canReceiveKioskOrders(userType) {
+  return userType >= 3;
+}
+
 function buildNotification(order, type) {
   const now = new Date();
   const timeStr = now.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' });
   if (type === 'new') {
+    const isKiosk = order.type === 'kiosk';
     return {
       id: `notif-${Date.now()}-${order.id}`,
       type: 'order',
       icon: 'fa-bag-shopping',
-      color: 'bg-[#f0b429]/15 text-[#f0b429]',
-      title: `New Order #ORD-${String(order.id).padStart(3, '0')}`,
+      color: isKiosk ? 'bg-purple-500/15 text-purple-400' : 'bg-[#f0b429]/15 text-[#f0b429]',
+      title: `${isKiosk ? '🖥️ Kiosk ' : ''}New Order #ORD-${String(order.id).padStart(3, '0')}`,
       body: `A new order of ₱${Number(order.total).toLocaleString()} was placed.`,
       time: `Just now · ${timeStr}`,
       read: false,
@@ -53,20 +60,25 @@ function buildNotification(order, type) {
 
 export default function App() {
   const [session, setSession] = useState(loadSession);
-  const [page, setPage] = useState('home');
+  const [page, setPage] = useState('orders');
   const [orders, setOrders] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [loadingOrders, setLoadingOrders] = useState(false);
+  const [showGivePoints, setShowGivePoints] = useState(false);
 
-  // Unlock Web Audio on first gesture so sounds work immediately
   useEffect(() => { unlockAudio(); }, []);
 
-  const loadOrders = useCallback(async (token) => {
+  const loadOrders = useCallback(async (token, userType) => {
     if (!token) return;
     setLoadingOrders(true);
     try {
       const data = await fetchAllOrders(token);
-      setOrders(Array.isArray(data) ? data : []);
+      const all = Array.isArray(data) ? data : [];
+      // Filter out kiosk orders for non-admin users
+      const visible = canReceiveKioskOrders(userType)
+        ? all
+        : all.filter((o) => o.type !== 'kiosk');
+      setOrders(visible);
     } catch {
       // keep previous orders on error
     } finally {
@@ -75,13 +87,16 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!session) { setPage('home'); return; }
+    if (!session) { return; }
 
-    loadOrders(session.token);
+    loadOrders(session.token, session.user_type);
 
     const socket = connectSocket(session.token);
 
     socket.on('order:new', (order) => {
+      // Only show kiosk orders to admin/superadmin
+      if (order.type === 'kiosk' && !canReceiveKioskOrders(session.user_type)) return;
+
       playNewOrderSound();
       setOrders((prev) => {
         if (prev.some((o) => o.id === order.id)) return prev;
@@ -91,6 +106,9 @@ export default function App() {
     });
 
     socket.on('order:updated', (order) => {
+      // Skip kiosk order updates for non-admin users
+      if (order.type === 'kiosk' && !canReceiveKioskOrders(session.user_type)) return;
+
       playStatusUpdateSound();
       setOrders((prev) => prev.map((o) => o.id === order.id ? order : o));
       setNotifications((prev) => [buildNotification(order, 'updated'), ...prev]);
@@ -170,6 +188,7 @@ export default function App() {
             loadingOrders={loadingOrders}
             onOrdersChange={handleOrdersChange}
             userType={session.user_type}
+            canSeeKiosk={canReceiveKioskOrders(session.user_type)}
           />
         );
       case 'products':      return <ProductsPage token={session.token} branchId={session.branch_id} userType={session.user_type} />;
@@ -213,7 +232,6 @@ export default function App() {
       <div className="flex min-w-0 flex-1 flex-col overflow-x-hidden">
         {/* Mobile header */}
         <header className="sticky top-0 z-10 bg-[#161616] md:hidden">
-          {/* Store name row */}
           <div className="flex items-center justify-between border-b border-gray-800 px-4 pt-3 pb-2.5">
             <div className="min-w-0">
               <h1 className="truncate font-bold text-white text-sm leading-none">{session.name}</h1>
@@ -232,7 +250,6 @@ export default function App() {
               Sign out
             </button>
           </div>
-          {/* Scrollable tab bar */}
           <div className="flex overflow-x-auto scrollbar-hide">
             {navItems.map((item) => {
               const active = page === item.page;
@@ -260,13 +277,29 @@ export default function App() {
           </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto px-4 py-5 pb-6 md:px-6 md:py-6 md:pb-6">
-          <div className={page === 'home' ? '' : 'mx-auto max-w-5xl'}>
+        <main className="flex-1 overflow-y-auto px-3 py-3 pb-4 md:px-4 md:py-4 md:pb-4">
+          <div className={page === 'home' ? '' : 'mx-auto'}>
             {renderPage()}
           </div>
         </main>
       </div>
 
+      {session && (
+        <button
+          onClick={() => setShowGivePoints(true)}
+          className="fixed bottom-6 right-6 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-[#f0b429] text-black shadow-2xl hover:bg-[#e8ac24] active:bg-[#d9a020] transition-colors"
+          title="Give Points"
+        >
+          <i className="fa fa-qrcode text-xl" />
+        </button>
+      )}
+
+      {showGivePoints && session && (
+        <GivePointsModal
+          token={session.token}
+          onClose={() => setShowGivePoints(false)}
+        />
+      )}
     </div>
   );
 }

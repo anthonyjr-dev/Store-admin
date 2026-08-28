@@ -1,18 +1,22 @@
 import { useState } from 'react';
 import { updateOrderStatus } from '../api.js';
 
-const COLUMNS = [
-  { id: 'new',       label: 'New',       dot: '#60a5fa', badgeCls: 'bg-blue-500',   statuses: ['pending', 'confirmed'] },
-  { id: 'preparing', label: 'Preparing', dot: '#f97316', badgeCls: 'bg-orange-500', statuses: ['preparing'] },
-  { id: 'ready',     label: 'Ready',     dot: '#4ade80', badgeCls: 'bg-green-500',  statuses: ['ready'] },
-  { id: 'completed', label: 'Completed', dot: '#6b7280', badgeCls: 'bg-gray-500',   statuses: ['delivered'] },
+const CAN_CANCEL = [1, 3];
+
+const FILTERS = [
+  { id: 'new',       label: 'New',       statuses: ['pending', 'confirmed'] },
+  { id: 'preparing', label: 'Preparing', statuses: ['preparing'] },
+  { id: 'ready',     label: 'Ready',     statuses: ['ready', 'picked_up'] },
+  { id: 'completed', label: 'Completed', statuses: ['delivered'] },
+  { id: 'cancelled', label: 'Cancelled', statuses: ['cancelled'] },
 ];
 
 const ACTION = {
   pending:   { label: 'Start Preparing', next: 'preparing' },
   confirmed: { label: 'Start Preparing', next: 'preparing' },
   preparing: { label: 'Mark Ready',      next: 'ready' },
-  ready:     { label: 'Complete',        next: 'delivered' },
+  ready:     { label: 'Picked Up', next: 'picked_up' },
+  picked_up: { label: 'Complete',          next: 'delivered' },
 };
 
 function formatTime(iso) {
@@ -25,9 +29,38 @@ function TypeBadge({ type }) {
   if (!t) return null;
   const isDelivery = t === 'delivery';
   return (
-    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium
-      ${isDelivery ? 'bg-orange-950/60 text-orange-400' : 'bg-green-950/60 text-green-400'}`}>
-      {isDelivery ? '🛺' : '🛵'} {isDelivery ? 'Delivery' : 'Pickup'}
+    <span className={'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ' +
+      (isDelivery ? 'bg-orange-950/60 text-orange-400' : 'bg-green-950/60 text-green-400')}>
+      {isDelivery ? '\u{1F6FA}' : '\u{1F6F5}'} {isDelivery ? 'Delivery' : 'Pickup'}
+    </span>
+  );
+}
+
+
+function KioskBadge() {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-purple-950/60 px-2 py-0.5 text-[11px] font-medium text-purple-400">
+      🖥️ Kiosk
+    </span>
+  );
+}
+function StatusBadge({ status }) {
+  const map = {
+    pending:   'bg-blue-950/60 text-blue-400',
+    confirmed: 'bg-blue-950/60 text-blue-400',
+    preparing: 'bg-orange-950/60 text-orange-400',
+    ready:     'bg-green-950/60 text-green-400',
+    picked_up: 'bg-teal-950/60 text-teal-400',
+    delivered: 'bg-gray-800 text-gray-400',
+    cancelled: 'bg-red-950/60 text-red-400',
+  };
+  const label = {
+    pending: 'New', confirmed: 'New', preparing: 'Preparing',
+    ready: 'Ready', picked_up: 'Picked Up', delivered: 'Completed', cancelled: 'Cancelled',
+  };
+  return (
+    <span className={'rounded-full px-2 py-0.5 text-[11px] font-semibold ' + (map[status] || 'bg-gray-800 text-gray-400')}>
+      {label[status] || status}
     </span>
   );
 }
@@ -52,7 +85,7 @@ function ItemDetails({ item }) {
       )}
       {temp && (
         <span className="rounded-lg bg-[#252525] px-2 py-0.5 text-[11px] text-gray-400">
-          <i className={`fa mr-1 text-gray-600 ${(temp + '').toLowerCase().includes('hot') ? 'fa-fire' : 'fa-snowflake'}`}></i>{temp}
+          <i className={'fa mr-1 text-gray-600 ' + ((String(temp)).toLowerCase().includes('hot') ? 'fa-fire' : 'fa-snowflake')}></i>{temp}
         </span>
       )}
       {sugar != null && (
@@ -69,15 +102,65 @@ function ItemDetails({ item }) {
   );
 }
 
-function OrderCard({ order, onAdvance, advancing }) {
+function CancelModal({ onProceed, onClose, loading }) {
+  const [notes, setNotes] = useState('');
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative z-10 w-full max-w-sm overflow-hidden rounded-2xl bg-[#1e1e1e] border border-gray-800 shadow-2xl">
+        <div className="flex items-center justify-between border-b border-gray-800 px-5 py-4">
+          <h3 className="font-bold text-white text-base">Cancel Order</h3>
+          <button type="button" onClick={onClose} className="flex h-7 w-7 items-center justify-center rounded-full bg-[#252525] text-gray-400 hover:text-white transition">
+            <i className="fa fa-xmark text-xs"></i>
+          </button>
+        </div>
+        <div className="p-5 space-y-4">
+          <p className="text-sm text-gray-400">Optionally add a reason for cancellation. This will be visible to the customer.</p>
+          <textarea
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder="e.g. Item out of stock, store closing soon…"
+            rows={3}
+            className="w-full resize-none rounded-xl border border-gray-700 bg-[#252525] px-3 py-2.5 text-sm text-white placeholder-gray-600 focus:border-red-500/60 focus:outline-none"
+          />
+        </div>
+        <div className="flex gap-2 border-t border-gray-800 px-5 py-4">
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex-1 rounded-2xl border border-gray-700 py-3 text-sm font-semibold text-gray-300 hover:bg-[#252525] transition"
+          >
+            Close
+          </button>
+          <button
+            type="button"
+            disabled={loading}
+            onClick={() => onProceed(notes)}
+            className="flex-1 rounded-2xl bg-red-600 py-3 text-sm font-bold text-white hover:bg-red-700 disabled:opacity-50 transition"
+          >
+            {loading ? 'Cancelling…' : 'Proceed'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function OrderCard({ order, onAdvance, onCancel, advancing, canceling, userType }) {
   const [expanded, setExpanded] = useState(false);
-  const action = ACTION[order.status];
-  const customerName = order.customer_name || order.customerName || order.user?.name || null;
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const action = (order.status === 'ready' && order.delivery_type === 'pickup') ? { label: 'Complete', next: 'delivered' } : ACTION[order.status];
+  const isKiosk = order.type === 'kiosk';
+  const customerName = isKiosk
+    ? order.guest_name
+    : (order.customer_name || order.customerName || order.user?.name || null);
   const orderType = order.type || order.order_type || null;
+  const canCancel = CAN_CANCEL.includes(userType);
+  const isPickedUpByRider = order.status === 'picked_up';
 
   return (
-    <div className="overflow-hidden rounded-2xl bg-[#1e1e1e]">
-      {/* Card header — clickable to expand */}
+    <>
+    <div className={"overflow-hidden rounded-2xl " + (isKiosk ? "bg-[#1a1525] border border-purple-900/40" : "bg-[#1e1e1e]")}>
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
@@ -86,21 +169,40 @@ function OrderCard({ order, onAdvance, advancing }) {
         <div className="flex items-start justify-between gap-2">
           <div className="flex flex-wrap items-center gap-1.5 min-w-0">
             <span className="font-bold text-white text-[15px]">ORD-{order.id}</span>
-            {orderType && <TypeBadge type={orderType} />}
+            <StatusBadge status={order.status} />
+            {isKiosk ? <KioskBadge /> : (orderType && <TypeBadge type={orderType} />)}
+            {isPickedUpByRider && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-teal-950/60 px-2 py-0.5 text-[11px] font-medium text-teal-300">
+                🛵 Picked up by rider
+              </span>
+            )}
           </div>
           <div className="flex shrink-0 items-center gap-2">
             <span className="text-[#f0b429] text-lg font-black">
               ₱{Number(order.total).toLocaleString()}
             </span>
-            <i className={`fa fa-chevron-down text-xs text-gray-600 transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}></i>
+            <i className={'fa fa-chevron-down text-xs text-gray-600 transition-transform duration-200 ' + (expanded ? 'rotate-180' : '')}></i>
           </div>
         </div>
         <p className="mt-1.5 text-sm text-gray-500">
           {customerName || `Customer #${order.userId}`} · {formatTime(order.createdAt)}
         </p>
+        {isKiosk && (
+          <div className="mt-2 space-y-1 rounded-xl bg-purple-950/20 border border-purple-900/30 px-3 py-2">
+            {order.guest_phone && (
+              <p className="text-[12px] text-purple-300">
+                <i className="fa fa-phone mr-1.5 text-purple-500"></i>{order.guest_phone}
+              </p>
+            )}
+            {order.guest_address && (
+              <p className="text-[12px] text-purple-300">
+                <i className="fa fa-location-dot mr-1.5 text-purple-500"></i>{order.guest_address}
+              </p>
+            )}
+          </div>
+        )}
       </button>
 
-      {/* Items */}
       <div className="border-t border-gray-800 px-4 py-3 space-y-3">
         {order.items?.length ? (
           order.items.map((item, i) => (
@@ -119,62 +221,61 @@ function OrderCard({ order, onAdvance, advancing }) {
         ) : (
           <p className="text-sm text-gray-600">—</p>
         )}
+        {order.store_notes && (
+          <div className="flex items-start gap-2 rounded-xl bg-red-950/20 border border-red-900/30 px-3 py-2">
+            <i className="fa fa-circle-info text-red-400 mt-0.5 shrink-0"></i>
+            <p className="text-[12px] text-red-300">{order.store_notes}</p>
+          </div>
+        )}
       </div>
 
-      {/* Action button */}
-      {action && (
-        <div className="px-4 pb-4 pt-2">
+      <div className="flex gap-2 px-4 pb-4 pt-2">
+        {canCancel && order.status !== 'cancelled' && order.status !== 'delivered' && (
+          <button
+            type="button"
+            disabled={canceling === order.id}
+            onClick={() => setShowCancelModal(true)}
+            className="flex-1 rounded-2xl bg-red-600 py-3 text-sm font-bold text-white transition-colors hover:bg-red-700 disabled:opacity-50"
+          >
+            {canceling === order.id ? 'Cancelling…' : 'Cancel'}
+          </button>
+        )}
+        {action && (
           <button
             type="button"
             disabled={advancing === order.id}
             onClick={() => onAdvance(order.id, action.next)}
-            className="w-full rounded-2xl bg-[#f0b429] py-3 text-sm font-bold text-black transition-colors hover:bg-[#e0a820] disabled:opacity-50"
+            className="flex-1 rounded-2xl bg-[#f0b429] py-3 text-sm font-bold text-black transition-colors hover:bg-[#e0a820] disabled:opacity-50"
           >
             {advancing === order.id ? 'Updating…' : `${action.label} →`}
           </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function KanbanColumn({ column, orders, onAdvance, advancing }) {
-  const colOrders = orders.filter((o) => column.statuses.includes(o.status));
-  return (
-    <div className="flex min-w-0 flex-col">
-      {/* Column header */}
-      <div className="mb-4 flex items-center gap-2">
-        <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: column.dot }}></span>
-        <span className="font-bold text-white">{column.label}</span>
-        <span className={`ml-auto flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-white ${column.badgeCls}`}>
-          {colOrders.length}
-        </span>
-      </div>
-
-      {/* Cards */}
-      <div className="flex flex-col gap-3">
-        {colOrders.length === 0 ? (
-          <div className="rounded-2xl border border-gray-800 p-6 text-center text-sm text-gray-700">
-            No orders
+        )}
+        {!action && !canCancel && (
+          <div className="flex-1 rounded-2xl bg-[#252525] py-3 text-center text-sm text-gray-500">
+            —
           </div>
-        ) : (
-          colOrders.map((o) => (
-            <OrderCard key={o.id} order={o} onAdvance={onAdvance} advancing={advancing} />
-          ))
         )}
       </div>
     </div>
+    {showCancelModal && (
+      <CancelModal
+        loading={canceling === order.id}
+        onClose={() => setShowCancelModal(false)}
+        onProceed={(notes) => {
+          setShowCancelModal(false);
+          onCancel && onCancel(order.id, notes);
+        }}
+      />
+    )}
+    </>
   );
 }
 
-function HomePage({ profile, pendingCount, orders = [], loadingOrders, token, onOrdersChange }) {
+function HomePage({ profile, orders = [], loadingOrders, token, onOrdersChange }) {
+  const [filter, setFilter] = useState('new');
   const [advancing, setAdvancing] = useState(null);
-  const [mobileCol, setMobileCol] = useState('new');
-
-  const todayOrders = orders.filter((o) => {
-    const d = new Date(o.createdAt);
-    return d.toDateString() === new Date().toDateString();
-  });
+  const [canceling, setCanceling] = useState(null);
+  const userType = profile?.user_type ?? null;
 
   async function advanceOrder(id, status) {
     setAdvancing(id);
@@ -188,90 +289,68 @@ function HomePage({ profile, pendingCount, orders = [], loadingOrders, token, on
     }
   }
 
-  const now = new Date();
-  const dateStr = now.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' });
-  const timeStr = now.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' });
-
-  if (loadingOrders) {
-    return (
-      <div className="flex h-64 items-center justify-center">
-        <i className="fa fa-spinner fa-spin text-3xl text-gray-600"></i>
-      </div>
-    );
+  async function cancelOrder(id, notes) {
+    setCanceling(id);
+    try {
+      const updated = await updateOrderStatus(id, 'cancelled', token, notes || undefined);
+      onOrdersChange(orders.map((o) => (o.id === updated.id ? { ...o, ...updated } : o)));
+    } catch {
+      // keep previous state on error
+    } finally {
+      setCanceling(null);
+    }
   }
+
+  const activeFilter = FILTERS.find((f) => f.id === filter) || FILTERS[0];
+  const filtered = orders.filter((o) => activeFilter.statuses.includes(o.status));
 
   return (
     <div>
-      {/* Desktop header */}
-      <div className="mb-6 hidden items-start justify-between md:flex">
-        <div>
-          <h1 className="text-3xl font-bold text-white">Order Board</h1>
-          <p className="mt-1 text-gray-500">{todayOrders.length} total orders today</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <span className="text-sm text-gray-500">{dateStr} · {timeStr}</span>
-          <span className="flex items-center gap-1.5 rounded-full bg-green-950/60 px-3 py-1.5 text-sm font-semibold text-green-400">
-            <span className="h-2 w-2 rounded-full bg-green-400"></span>
-            Open
-          </span>
-        </div>
+      <div className="mb-5 flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+        {FILTERS.map((f) => {
+          const count = orders.filter((o) => f.statuses.includes(o.status)).length;
+          const active = filter === f.id;
+          return (
+            <button
+              key={f.id}
+              type="button"
+              onClick={() => setFilter(f.id)}
+              className={'flex shrink-0 items-center gap-2 rounded-2xl border px-4 py-2.5 text-sm font-semibold transition-colors ' +
+                (active
+                  ? 'border-[#f0b429]/40 bg-[#1e1e1e] text-white'
+                  : 'border-gray-800 bg-transparent text-gray-600 hover:text-gray-400')}
+            >
+              <span className="text-base font-black">{count}</span>
+              <span>{f.label}</span>
+            </button>
+          );
+        })}
       </div>
 
-      {/* Desktop kanban — 4 columns */}
-      <div className="hidden grid-cols-4 gap-5 md:grid">
-        {COLUMNS.map((col) => (
-          <KanbanColumn
-            key={col.id}
-            column={col}
-            orders={orders}
-            onAdvance={advanceOrder}
-            advancing={advancing}
-          />
-        ))}
-      </div>
-
-      {/* Mobile — tab switcher */}
-      <div className="md:hidden">
-        {/* Column tabs */}
-        <div className="flex gap-2 overflow-x-auto pb-3 scrollbar-hide">
-          {COLUMNS.map((col) => {
-            const count = orders.filter((o) => col.statuses.includes(o.status)).length;
-            const active = mobileCol === col.id;
-            return (
-              <button
-                key={col.id}
-                type="button"
-                onClick={() => setMobileCol(col.id)}
-                className={`flex shrink-0 items-center gap-2 rounded-2xl border px-4 py-2.5 text-sm font-semibold transition-colors
-                  ${active
-                    ? 'border-[#f0b429]/40 bg-[#1e1e1e] text-white'
-                    : 'border-gray-800 bg-transparent text-gray-600'}`}
-              >
-                <span className="text-base font-black">{count}</span>
-                <span>{col.label}</span>
-              </button>
-            );
-          })}
+      {loadingOrders ? (
+        <div className="flex h-48 items-center justify-center">
+          <i className="fa fa-spinner fa-spin text-3xl text-gray-600"></i>
         </div>
-
-        {/* Active column orders */}
-        <div className="mt-3 flex flex-col gap-3">
-          {(() => {
-            const col = COLUMNS.find((c) => c.id === mobileCol);
-            const colOrders = orders.filter((o) => col.statuses.includes(o.status));
-            if (!colOrders.length) {
-              return (
-                <div className="rounded-2xl border border-gray-800 p-10 text-center text-sm text-gray-700">
-                  No {col.label.toLowerCase()} orders
-                </div>
-              );
-            }
-            return colOrders.map((o) => (
-              <OrderCard key={o.id} order={o} onAdvance={advanceOrder} advancing={advancing} />
-            ));
-          })()}
+      ) : filtered.length === 0 ? (
+        <div className="rounded-2xl border border-gray-800 p-12 text-center">
+          <i className="fa fa-bag-shopping text-4xl text-gray-700"></i>
+          <p className="mt-3 text-sm text-gray-600">No {activeFilter.label.toLowerCase()} orders</p>
         </div>
-      </div>
+      ) : (
+        <div className="flex flex-col gap-3 md:grid md:grid-cols-2 lg:grid-cols-3">
+          {filtered.map((order) => (
+            <OrderCard
+              key={order.id}
+              order={order}
+              onAdvance={advanceOrder}
+              onCancel={cancelOrder}
+              canceling={canceling}
+              advancing={advancing}
+              userType={userType}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

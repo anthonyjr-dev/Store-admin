@@ -1,27 +1,35 @@
 import { useState } from 'react';
 import { updateOrderStatus } from '../api.js';
 
-// Users with user_type 1 (admin) or 3 (superadmin) can cancel orders
 const CAN_CANCEL = [1, 3];
 
 const FILTERS = [
   { id: 'new',       label: 'New',       statuses: ['pending', 'confirmed'] },
   { id: 'preparing', label: 'Preparing', statuses: ['preparing'] },
-  { id: 'ready',     label: 'Ready',     statuses: ['ready'] },
+  { id: 'ready',     label: 'Ready',     statuses: ['ready', 'picked_up'] },
   { id: 'completed', label: 'Completed', statuses: ['delivered'] },
   { id: 'cancelled', label: 'Cancelled', statuses: ['cancelled'] },
 ];
 
 const ACTION = {
-  pending:   { label: 'Start Preparing', next: 'preparing' },
-  confirmed: { label: 'Start Preparing', next: 'preparing' },
-  preparing: { label: 'Mark Ready',      next: 'ready' },
-  ready:     { label: 'Complete',        next: 'delivered' },
+  pending:   { label: 'Start Preparing',   next: 'preparing' },
+  confirmed: { label: 'Start Preparing',   next: 'preparing' },
+  preparing: { label: 'Mark Ready',        next: 'ready' },
+  ready:     { label: 'Picked Up', next: 'picked_up' },
+  picked_up: { label: 'Complete',          next: 'delivered' },
 };
 
 function formatTime(iso) {
   if (!iso) return '';
   return new Date(iso).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' });
+}
+
+function KioskBadge() {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-purple-950/60 px-2 py-0.5 text-[11px] font-medium text-purple-400">
+      🖥️ Kiosk
+    </span>
+  );
 }
 
 function TypeBadge({ type }) {
@@ -42,12 +50,13 @@ function StatusBadge({ status }) {
     confirmed: 'bg-blue-950/60 text-blue-400',
     preparing: 'bg-orange-950/60 text-orange-400',
     ready:     'bg-green-950/60 text-green-400',
+    picked_up: 'bg-teal-950/60 text-teal-400',
     delivered: 'bg-gray-800 text-gray-400',
     cancelled: 'bg-red-950/60 text-red-400',
   };
   const label = {
     pending: 'New', confirmed: 'New', preparing: 'Preparing',
-    ready: 'Ready', delivered: 'Completed', cancelled: 'Cancelled',
+    ready: 'Ready', picked_up: 'Picked Up', delivered: 'Completed', cancelled: 'Cancelled',
   };
   return (
     <span className={'rounded-full px-2 py-0.5 text-[11px] font-semibold ' + (map[status] || 'bg-gray-800 text-gray-400')}>
@@ -61,7 +70,6 @@ function ItemDetails({ item }) {
   const temp  = item.temperature || item.temp;
   const sugar = item.sugar_level ?? item.sugarLevel ?? item.sugar;
   const notes = item.notes || item.instructions || item.additional_instructions || item.special_instructions;
-
   const hasDetails = size || temp || sugar != null || notes;
 
   return (
@@ -76,7 +84,7 @@ function ItemDetails({ item }) {
       )}
       {temp && (
         <span className="rounded-lg bg-[#252525] px-2 py-0.5 text-[11px] text-gray-400">
-          <i className={'fa mr-1 text-gray-600 ' + ((String(temp) + '').toLowerCase().includes('hot') ? 'fa-fire' : 'fa-snowflake')}></i>{temp}
+          <i className={'fa mr-1 text-gray-600 ' + ((String(temp)).toLowerCase().includes('hot') ? 'fa-fire' : 'fa-snowflake')}></i>{temp}
         </span>
       )}
       {sugar != null && (
@@ -93,16 +101,64 @@ function ItemDetails({ item }) {
   );
 }
 
+function CancelModal({ onProceed, onClose, loading }) {
+  const [notes, setNotes] = useState('');
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative z-10 w-full max-w-sm overflow-hidden rounded-2xl bg-[#1e1e1e] border border-gray-800 shadow-2xl">
+        <div className="flex items-center justify-between border-b border-gray-800 px-5 py-4">
+          <h3 className="font-bold text-white text-base">Cancel Order</h3>
+          <button type="button" onClick={onClose} className="flex h-7 w-7 items-center justify-center rounded-full bg-[#252525] text-gray-400 hover:text-white transition">
+            <i className="fa fa-xmark text-xs"></i>
+          </button>
+        </div>
+        <div className="p-5 space-y-4">
+          <p className="text-sm text-gray-400">Optionally add a reason for cancellation. This will be visible to the customer.</p>
+          <textarea
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder="e.g. Item out of stock, store closing soon…"
+            rows={3}
+            className="w-full resize-none rounded-xl border border-gray-700 bg-[#252525] px-3 py-2.5 text-sm text-white placeholder-gray-600 focus:border-red-500/60 focus:outline-none"
+          />
+        </div>
+        <div className="flex gap-2 border-t border-gray-800 px-5 py-4">
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex-1 rounded-2xl border border-gray-700 py-3 text-sm font-semibold text-gray-300 hover:bg-[#252525] transition"
+          >
+            Close
+          </button>
+          <button
+            type="button"
+            disabled={loading}
+            onClick={() => onProceed(notes)}
+            className="flex-1 rounded-2xl bg-red-600 py-3 text-sm font-bold text-white hover:bg-red-700 disabled:opacity-50 transition"
+          >
+            {loading ? 'Cancelling…' : 'Proceed'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function OrderCard({ order, onAdvance, onCancel, advancing, canceling, userType }) {
   const [expanded, setExpanded] = useState(false);
-  const action = ACTION[order.status];
-  const customerName = order.customer_name || order.customerName || order.user?.name || null;
-  const orderType = order.type || order.order_type || null;
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const action = (order.status === 'ready' && order.delivery_type === 'pickup') ? { label: 'Complete', next: 'delivered' } : ACTION[order.status];
+  const isKiosk = order.type === 'kiosk';
+  const customerName = isKiosk
+    ? order.guest_name
+    : (order.customer_name || order.customerName || order.user?.name || null);
   const canCancel = CAN_CANCEL.includes(userType);
+  const isPickedUpByRider = order.status === 'picked_up';
 
   return (
-    <div className="overflow-hidden rounded-2xl bg-[#1e1e1e]">
-      {/* Header — clickable to expand */}
+    <>
+    <div className={'overflow-hidden rounded-2xl ' + (isKiosk ? 'bg-[#1a1525] border border-purple-900/40' : 'bg-[#1e1e1e]')}>
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
@@ -112,7 +168,12 @@ function OrderCard({ order, onAdvance, onCancel, advancing, canceling, userType 
           <div className="flex flex-wrap items-center gap-1.5 min-w-0">
             <span className="font-bold text-white text-[15px]">ORD-{order.id}</span>
             <StatusBadge status={order.status} />
-            {orderType && <TypeBadge type={orderType} />}
+            {isKiosk && <KioskBadge />}{order.delivery_type && <TypeBadge type={order.delivery_type} />}
+            {isPickedUpByRider && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-teal-950/60 px-2 py-0.5 text-[11px] font-medium text-teal-300">
+                🛵 Picked up by rider
+              </span>
+            )}
           </div>
           <div className="flex shrink-0 items-center gap-2">
             <span className="text-[#f0b429] text-lg font-black">
@@ -124,9 +185,23 @@ function OrderCard({ order, onAdvance, onCancel, advancing, canceling, userType 
         <p className="mt-1.5 text-sm text-gray-500">
           {customerName || `Customer #${order.userId}`} · {formatTime(order.createdAt)}
         </p>
+        {/* Kiosk guest details */}
+        {isKiosk && expanded && (
+          <div className="mt-2 space-y-1 rounded-xl bg-purple-950/20 border border-purple-900/30 px-3 py-2">
+            {order.guest_phone && (
+              <p className="text-[12px] text-purple-300">
+                <i className="fa fa-phone mr-1.5 text-purple-500"></i>{order.guest_phone}
+              </p>
+            )}
+            {order.guest_address && (
+              <p className="text-[12px] text-purple-300">
+                <i className="fa fa-location-dot mr-1.5 text-purple-500"></i>{order.guest_address}
+              </p>
+            )}
+          </div>
+        )}
       </button>
 
-      {/* Items */}
       <div className="border-t border-gray-800 px-4 py-3 space-y-3">
         {order.items?.length ? (
           order.items.map((item, i) => (
@@ -145,22 +220,25 @@ function OrderCard({ order, onAdvance, onCancel, advancing, canceling, userType 
         ) : (
           <p className="text-sm text-gray-600">—</p>
         )}
+        {order.store_notes && (
+          <div className="flex items-start gap-2 rounded-xl bg-red-950/20 border border-red-900/30 px-3 py-2">
+            <i className="fa fa-circle-info text-red-400 mt-0.5 shrink-0"></i>
+            <p className="text-[12px] text-red-300">{order.store_notes}</p>
+          </div>
+        )}
       </div>
 
-      {/* Actions */}
       <div className="flex gap-2 px-4 pb-4 pt-2">
-        {/* Cancel/Void button - only for admin/superadmin */}
-        {canCancel && order.status !== 'cancelled' && (
+        {canCancel && order.status !== 'cancelled' && order.status !== 'delivered' && (
           <button
             type="button"
             disabled={canceling === order.id}
-            onClick={() => onCancel && onCancel(order.id)}
+            onClick={() => setShowCancelModal(true)}
             className="flex-1 rounded-2xl bg-red-600 py-3 text-sm font-bold text-white transition-colors hover:bg-red-700 disabled:opacity-50"
           >
             {canceling === order.id ? 'Cancelling…' : 'Cancel'}
           </button>
         )}
-        {/* Status advance button */}
         {action && (
           <button
             type="button"
@@ -171,7 +249,6 @@ function OrderCard({ order, onAdvance, onCancel, advancing, canceling, userType 
             {advancing === order.id ? 'Updating…' : `${action.label} →`}
           </button>
         )}
-        {/* Only show cancel button when no action available */}
         {!action && !canCancel && (
           <div className="flex-1 rounded-2xl bg-[#252525] py-3 text-center text-sm text-gray-500">
             —
@@ -179,11 +256,23 @@ function OrderCard({ order, onAdvance, onCancel, advancing, canceling, userType 
         )}
       </div>
     </div>
+    {showCancelModal && (
+      <CancelModal
+        loading={canceling === order.id}
+        onClose={() => setShowCancelModal(false)}
+        onProceed={(notes) => {
+          setShowCancelModal(false);
+          onCancel && onCancel(order.id, notes);
+        }}
+      />
+    )}
+    </>
   );
 }
 
-function OrdersPage({ token, orders = [], loadingOrders, onOrdersChange, userType }) {
+function OrdersPage({ token, orders = [], loadingOrders, onOrdersChange, userType, canSeeKiosk }) {
   const [filter, setFilter] = useState('new');
+  const [kioskOnly, setKioskOnly] = useState(false);
   const [advancing, setAdvancing] = useState(null);
   const [canceling, setCanceling] = useState(null);
 
@@ -199,10 +288,10 @@ function OrdersPage({ token, orders = [], loadingOrders, onOrdersChange, userTyp
     }
   }
 
-  async function cancelOrder(id) {
+  async function cancelOrder(id, notes) {
     setCanceling(id);
     try {
-      const updated = await updateOrderStatus(id, 'cancelled', token);
+      const updated = await updateOrderStatus(id, 'cancelled', token, notes || undefined);
       onOrdersChange(orders.map((o) => (o.id === updated.id ? { ...o, ...updated } : o)));
     } catch {
       // keep previous state on error
@@ -212,57 +301,139 @@ function OrdersPage({ token, orders = [], loadingOrders, onOrdersChange, userTyp
   }
 
   const activeFilter = FILTERS.find((f) => f.id === filter) || FILTERS[0];
-  const filtered = orders.filter((o) => activeFilter.statuses.includes(o.status));
+
+  // Base filter by status, then optionally by kiosk
+  const filtered = orders
+    .filter((o) => activeFilter.statuses.includes(o.status))
+    .filter((o) => kioskOnly ? o.type === 'kiosk' : true);
+
+  const kioskCount = orders.filter((o) => o.type === 'kiosk' && activeFilter.statuses.includes(o.status)).length;
+
+  const COLUMN_ACCENT = {
+    new:       'bg-blue-500',
+    preparing: 'bg-orange-500',
+    ready:     'bg-green-500',
+    completed: 'bg-gray-500',
+    cancelled: 'bg-red-500',
+  };
 
   return (
     <div>
-      {/* Status filter pills */}
-      <div className="mb-5 flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
-        {FILTERS.map((f) => {
-          const count = orders.filter((o) => f.statuses.includes(o.status)).length;
-          const active = filter === f.id;
-          return (
+      {/* ── Mobile: tab filter + list ── */}
+      <div className="md:hidden">
+        <div className="mb-4 flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+          {FILTERS.map((f) => {
+            const count = orders.filter((o) => f.statuses.includes(o.status)).length;
+            const active = filter === f.id;
+            return (
+              <button
+                key={f.id}
+                type="button"
+                onClick={() => setFilter(f.id)}
+                className={'flex shrink-0 items-center gap-2 rounded-2xl border px-4 py-2.5 text-sm font-semibold transition-colors ' +
+                  (active
+                    ? 'border-[#f0b429]/40 bg-[#1e1e1e] text-white'
+                    : 'border-gray-800 bg-transparent text-gray-600 hover:text-gray-400')}
+              >
+                <span className="text-base font-black">{count}</span>
+                <span>{f.label}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {canSeeKiosk && kioskCount > 0 && (
+          <div className="mb-4">
             <button
-              key={f.id}
               type="button"
-              onClick={() => setFilter(f.id)}
-              className={'flex shrink-0 items-center gap-2 rounded-2xl border px-4 py-2.5 text-sm font-semibold transition-colors ' +
-                (active
-                  ? 'border-[#f0b429]/40 bg-[#1e1e1e] text-white'
-                  : 'border-gray-800 bg-transparent text-gray-600 hover:text-gray-400')}
+              onClick={() => setKioskOnly((v) => !v)}
+              className={'flex items-center gap-2 rounded-2xl border px-4 py-2 text-sm font-semibold transition-colors ' +
+                (kioskOnly
+                  ? 'border-purple-700/60 bg-purple-950/30 text-purple-300'
+                  : 'border-gray-800 text-gray-500 hover:text-gray-400')}
             >
-              <span className="text-base font-black">{count}</span>
-              <span>{f.label}</span>
+              🖥️ Kiosk Orders
+              <span className="rounded-full bg-purple-800/50 px-1.5 py-0.5 text-[10px] font-bold text-purple-300">
+                {kioskCount}
+              </span>
             </button>
-          );
-        })}
+          </div>
+        )}
+
+        {loadingOrders ? (
+          <div className="flex h-48 items-center justify-center">
+            <i className="fa fa-spinner fa-spin text-3xl text-gray-600"></i>
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="rounded-2xl border border-gray-800 p-12 text-center">
+            <i className="fa fa-bag-shopping text-4xl text-gray-700"></i>
+            <p className="mt-3 text-sm text-gray-600">No {activeFilter.label.toLowerCase()} orders</p>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-3">
+            {filtered.map((order) => (
+              <OrderCard
+                key={order.id}
+                order={order}
+                onAdvance={advanceOrder}
+                onCancel={cancelOrder}
+                canceling={canceling}
+                advancing={advancing}
+                userType={userType}
+              />
+            ))}
+          </div>
+        )}
       </div>
 
-      {/* Order list */}
-      {loadingOrders ? (
-        <div className="flex h-48 items-center justify-center">
-          <i className="fa fa-spinner fa-spin text-3xl text-gray-600"></i>
-        </div>
-      ) : filtered.length === 0 ? (
-        <div className="rounded-2xl border border-gray-800 p-12 text-center">
-          <i className="fa fa-bag-shopping text-4xl text-gray-700"></i>
-          <p className="mt-3 text-sm text-gray-600">No {activeFilter.label.toLowerCase()} orders</p>
-        </div>
-      ) : (
-        <div className="flex flex-col gap-3 md:grid md:grid-cols-2 lg:grid-cols-3">
-          {filtered.map((order) => (
-            <OrderCard
-              key={order.id}
-              order={order}
-              onAdvance={advanceOrder}
-              onCancel={cancelOrder}
-              canceling={canceling}
-              advancing={advancing}
-              userType={userType}
-            />
-          ))}
-        </div>
-      )}
+      {/* ── Desktop: Kanban board ── */}
+      <div className="hidden md:flex gap-4 overflow-x-auto pb-4">
+        {loadingOrders ? (
+          <div className="flex flex-1 h-48 items-center justify-center">
+            <i className="fa fa-spinner fa-spin text-3xl text-gray-600"></i>
+          </div>
+        ) : (
+          FILTERS.map((col) => {
+            const colOrders = orders
+              .filter((o) => col.statuses.includes(o.status))
+              .filter((o) => kioskOnly ? o.type === 'kiosk' : true);
+            return (
+              <div key={col.id} style={{ width: 288, flexShrink: 0, height: 'calc(100vh - 110px)' }}>
+                {/* Column header */}
+                <div className="mb-3 flex items-center gap-2 rounded-xl bg-[#1a1a1a] px-3 py-2.5">
+                  <span className={'h-2 w-2 rounded-full shrink-0 ' + (COLUMN_ACCENT[col.id] || 'bg-gray-500')} />
+                  <span className="flex-1 text-sm font-bold text-gray-200">{col.label}</span>
+                  <span className="rounded-full bg-[#252525] px-2 py-0.5 text-xs font-bold text-gray-400">
+                    {colOrders.length}
+                  </span>
+                </div>
+                {/* Cards — independently scrollable, takes remaining column height */}
+                <div style={{ height: 'calc(100% - 58px)', overflowY: 'auto', paddingRight: 4, paddingBottom: 8 }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    {colOrders.length === 0 ? (
+                      <div className="rounded-2xl border border-dashed border-gray-800 py-8 text-center">
+                        <p className="text-xs text-gray-700">No orders</p>
+                      </div>
+                    ) : (
+                      colOrders.map((order) => (
+                        <OrderCard
+                          key={order.id}
+                          order={order}
+                          onAdvance={advanceOrder}
+                          onCancel={cancelOrder}
+                          canceling={canceling}
+                          advancing={advancing}
+                          userType={userType}
+                        />
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
     </div>
   );
 }
