@@ -1,14 +1,18 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { fetchProducts, createProduct, updateProduct, deleteProduct, uploadProductImage } from '../api.js';
 
-const CATEGORIES = ['All', 'Coffee', 'Espresso', 'Tea', 'Pastries', 'Cold Brew', 'Smoothies', 'Non-Coffee', 'Seasonal', 'Snacks'];
-
-const emptyForm = { name: '', description: '', image: '', price: '', category: 'Coffee', available: true };
+const emptyForm = { name: '', description: '', image: '', price: '', category: 'Coffee', available: true, size_prices: {} };
 
 const INPUT = 'mt-1 w-full rounded-2xl border border-gray-700 bg-[#252525] px-4 py-2.5 text-white placeholder-gray-600 outline-none focus:border-[#f0b429] focus:ring-2 focus:ring-[#f0b429]/20';
 
-function ProductModal({ initial, onSave, onClose, saving, saveError, onUpload }) {
-  const [form, setForm] = useState(initial || emptyForm);
+function ProductModal({ initial, onSave, onClose, saving, saveError, onUpload, categories }) {
+  const resolvedInitial = useMemo(() => ({
+    ...emptyForm,
+    ...initial,
+    price: initial ? String(initial.price ?? '') : '',
+    size_prices: initial?.size_prices || {},
+  }), [initial]);
+  const [form, setForm] = useState(resolvedInitial);
   const [imageMode, setImageMode] = useState(initial?.image ? 'url' : 'upload');
   const [pendingFile, setPendingFile] = useState(null);
   const [uploadPreview, setUploadPreview] = useState('');
@@ -17,12 +21,55 @@ function ProductModal({ initial, onSave, onClose, saving, saveError, onUpload })
   const blobRef = useRef('');
 
   useEffect(() => {
+    setForm(resolvedInitial);
+    setImageMode(resolvedInitial.image ? 'url' : 'upload');
+    setPendingFile(null);
+    setUploadPreview('');
+  }, [resolvedInitial]);
+
+  const sizeEntries = useMemo(() => {
+    const raw = form.size_prices || initial?.size_prices || {};
+    const base = raw && Object.keys(raw).length ? raw : { '12oz': Number(form.price) || 0 };
+    return Object.entries(base).map(([label, value]) => ({ label, value: Number(value) }));
+  }, [form.size_prices, initial?.size_prices, form.price]);
+
+  const updateSize = (label, value) => {
+    const next = { ...(form.size_prices || {}) };
+    next[label] = Number(value);
+    setForm((f) => ({ ...f, size_prices: next }));
+  };
+
+  const addSize = () => {
+    const label = prompt('Size label, e.g. 1 Liter Hot');
+    if (!label) return;
+    setForm((f) => ({ ...f, size_prices: { ...(f.size_prices || {}), [label]: 0 } }));
+  };
+
+  const removeSize = (label) => {
+    if (label === '12oz') return;
+    setForm((f) => {
+      const next = { ...(f.size_prices || {}) };
+      delete next[label];
+      return { ...f, size_prices: next };
+    });
+  };
+
+  useEffect(() => {
     return () => { if (blobRef.current) URL.revokeObjectURL(blobRef.current); };
   }, []);
 
   function update(e) {
     const { name, value, type, checked } = e.target;
-    setForm((f) => ({ ...f, [name]: type === 'checkbox' ? checked : value }));
+    setForm((f) => {
+      const next = { ...f, [name]: type === 'checkbox' ? checked : value };
+      if (name === 'price') {
+        const price = parseFloat(value);
+        if (!isNaN(price) && f.size_prices && f.size_prices['12oz'] === Number(f.price)) {
+          next.size_prices = { ...f.size_prices, '12oz': price };
+        }
+      }
+      return next;
+    });
   }
 
   function handleFileChange(e) {
@@ -117,11 +164,54 @@ function ProductModal({ initial, onSave, onClose, saving, saveError, onUpload })
             <label className="block text-sm font-semibold text-gray-300">
               Category
               <select name="category" value={form.category} onChange={update} className={INPUT}>
-                {CATEGORIES.filter((c) => c !== 'All').map((c) => (
+                {(categories || []).filter((c) => c !== 'All').map((c) => (
                   <option key={c} value={c}>{c}</option>
                 ))}
               </select>
             </label>
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-bold text-cream-muted uppercase tracking-wide">Size Prices</p>
+              <button type="button" onClick={addSize} className="text-xs font-bold text-[#f0b429] hover:text-white">
+                + Add Size
+              </button>
+            </div>
+            <div className="space-y-2">
+              {sizeEntries.map(({ label, value }) => (
+                <div key={label} className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={label}
+                    onChange={(e) => {
+                      const old = label;
+                      const nextLabel = e.target.value;
+                      if (!nextLabel) return;
+                      const next = { ...(form.size_prices || {}) };
+                      delete next[old];
+                      next[nextLabel] = value;
+                      setForm((f) => ({ ...f, size_prices: next }));
+                    }}
+                    className="w-24 rounded-xl border border-gray-700 bg-[#252525] px-3 py-2 text-xs text-white outline-none focus:border-[#f0b429]"
+                  />
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={value}
+                    onChange={(e) => updateSize(label, e.target.value)}
+                    className="flex-1 rounded-xl border border-gray-700 bg-[#252525] px-3 py-2 text-xs text-white outline-none focus:border-[#f0b429]"
+                  />
+                  <button type="button" onClick={() => removeSize(label)} className="text-red-400 hover:text-red-300 text-xs font-bold">
+                    ✕
+                  </button>
+                </div>
+              ))}
+              {sizeEntries.length === 0 && (
+                <p className="text-xs text-gray-500">No size prices set.</p>
+              )}
+            </div>
           </div>
 
           <label className="flex cursor-pointer items-center gap-3 text-sm font-semibold text-gray-300">
@@ -161,8 +251,7 @@ function ToggleSwitch({ checked, onChange, disabled }) {
   );
 }
 
-function BranchMenuView({ products, onToggleAvailable, updating }) {
-  const categoryOrder = CATEGORIES.filter((c) => c !== 'All');
+function BranchMenuView({ products, onToggleAvailable, updating, categoryOrder }) {
   const grouped = categoryOrder
     .map((cat) => ({ cat, items: products.filter((p) => p.category === cat) }))
     .filter(({ items }) => items.length > 0);
@@ -274,6 +363,7 @@ function ProductsPage({ token, branchId, userType }) {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [category, setCategory] = useState('All');
+  const [categories, setCategories] = useState(['All']);
   const [modal, setModal] = useState(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
@@ -284,7 +374,9 @@ function ProductsPage({ token, branchId, userType }) {
     setLoading(true);
     try {
       const data = await fetchProducts('All', branchId);
-      setProducts(Array.isArray(data) ? data : []);
+      const list = Array.isArray(data) ? data : [];
+      setProducts(list);
+      setCategories(['All', ...new Set(list.map((p) => p.category).filter(Boolean))]);
     } catch (e) {
       setError(e.message);
     } finally {
@@ -368,6 +460,7 @@ function ProductsPage({ token, branchId, userType }) {
             products={products}
             onToggleAvailable={handleToggleAvailable}
             updating={updating}
+            categoryOrder={categories.filter((c) => c !== 'All')}
           />
         )}
       </section>
@@ -396,7 +489,7 @@ function ProductsPage({ token, branchId, userType }) {
 
       <div className="tab-scroll-container">
         <div className="flex gap-2 w-max">
-          {CATEGORIES.map((cat) => (
+          {categories.map((cat) => (
             <button key={cat} type="button" onClick={() => setCategory(cat)}
               className={`shrink-0 rounded-2xl px-4 py-2 text-sm font-semibold whitespace-nowrap transition
                 ${category === cat
@@ -445,6 +538,7 @@ function ProductsPage({ token, branchId, userType }) {
           saving={saving}
           saveError={saveError}
           onUpload={(file) => uploadProductImage(file, token)}
+          categories={categories}
         />
       )}
     </section>

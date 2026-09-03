@@ -44,6 +44,14 @@ function KioskBadge() {
     </span>
   );
 }
+
+function MayaPaidBadge() {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-950/60 border border-emerald-700/40 px-2 py-0.5 text-[11px] font-semibold text-emerald-400">
+      ✓ Maya (paid)
+    </span>
+  );
+}
 function StatusBadge({ status }) {
   const map = {
     pending:   'bg-blue-950/60 text-blue-400',
@@ -171,6 +179,7 @@ function OrderCard({ order, onAdvance, onCancel, advancing, canceling, userType 
             <span className="font-bold text-white text-[15px]">ORD-{order.id}</span>
             <StatusBadge status={order.status} />
             {isKiosk ? <KioskBadge /> : (orderType && <TypeBadge type={orderType} />)}
+            {order.payment_method === 'maya' && order.payment_confirmed && <MayaPaidBadge />}
             {isPickedUpByRider && (
               <span className="inline-flex items-center gap-1 rounded-full bg-teal-950/60 px-2 py-0.5 text-[11px] font-medium text-teal-300">
                 🛵 Picked up by rider

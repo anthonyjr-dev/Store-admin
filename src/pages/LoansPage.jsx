@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { updateOrderStatus } from '../api.js';
+import { updateOrderStatus, confirmOrderPayment } from '../api.js';
 
 const CAN_CANCEL = [1, 3];
 
@@ -44,7 +44,7 @@ function TypeBadge({ type }) {
   );
 }
 
-function StatusBadge({ status }) {
+function StatusBadge({ status, paymentConfirmed, paymentMethod }) {
   const map = {
     pending:   'bg-blue-950/60 text-blue-400',
     confirmed: 'bg-blue-950/60 text-blue-400',
@@ -61,6 +61,16 @@ function StatusBadge({ status }) {
   return (
     <span className={'rounded-full px-2 py-0.5 text-[11px] font-semibold ' + (map[status] || 'bg-gray-800 text-gray-400')}>
       {label[status] || status}
+      {!paymentConfirmed && paymentMethod && status !== 'cancelled' && status !== 'delivered' && (
+        <span className="ml-1.5 inline-flex items-center gap-1 rounded-full bg-yellow-950/60 px-1.5 py-0.5 text-[10px] font-bold text-yellow-400">
+          ⏳ Payment
+        </span>
+      )}
+      {paymentConfirmed && (
+        <span className="ml-1.5 inline-flex items-center gap-1 rounded-full bg-green-950/60 px-1.5 py-0.5 text-[10px] font-bold text-green-400">
+          ✓ {paymentMethod === 'maya' ? 'Maya (paid)' : 'Paid'}
+        </span>
+      )}
     </span>
   );
 }
@@ -145,8 +155,8 @@ function CancelModal({ onProceed, onClose, loading }) {
   );
 }
 
-function OrderCard({ order, onAdvance, onCancel, advancing, canceling, userType }) {
-  const [expanded, setExpanded] = useState(false);
+function OrderCard({ order, onAdvance, onCancel, confirming, canceling, advanceOrder, cancelOrder, userType, confirmPayment, confirmingPayment, advancing }) {
+  const [expanded, setExpanded] = useState(true);
   const [showCancelModal, setShowCancelModal] = useState(false);
   const action = (order.status === 'ready' && order.delivery_type === 'pickup') ? { label: 'Complete', next: 'delivered' } : ACTION[order.status];
   const isKiosk = order.type === 'kiosk';
@@ -155,6 +165,8 @@ function OrderCard({ order, onAdvance, onCancel, advancing, canceling, userType 
     : (order.customer_name || order.customerName || order.user?.name || null);
   const canCancel = CAN_CANCEL.includes(userType);
   const isPickedUpByRider = order.status === 'picked_up';
+  const paymentConfirmed = !!order.payment_confirmed;
+  const paymentMethod = order.payment_method || order.paymentMethod || null;
 
   return (
     <>
@@ -167,7 +179,7 @@ function OrderCard({ order, onAdvance, onCancel, advancing, canceling, userType 
         <div className="flex items-start justify-between gap-2">
           <div className="flex flex-wrap items-center gap-1.5 min-w-0">
             <span className="font-bold text-white text-[15px]">ORD-{order.id}</span>
-            <StatusBadge status={order.status} />
+            <StatusBadge status={order.status} paymentConfirmed={paymentConfirmed} paymentMethod={paymentMethod} />
             {isKiosk && <KioskBadge />}{order.delivery_type && <TypeBadge type={order.delivery_type} />}
             {isPickedUpByRider && (
               <span className="inline-flex items-center gap-1 rounded-full bg-teal-950/60 px-2 py-0.5 text-[11px] font-medium text-teal-300">
@@ -184,6 +196,12 @@ function OrderCard({ order, onAdvance, onCancel, advancing, canceling, userType 
         </div>
         <p className="mt-1.5 text-sm text-gray-500">
           {customerName || `Customer #${order.userId}`} · {formatTime(order.createdAt)}
+          {order.scheduled_date ? (
+            <span className="ml-2 text-gray-400">
+              · 📅 {order.scheduled_date}
+              {order.scheduled_time ? ` · ${order.scheduled_time}` : ''}
+            </span>
+          ) : null}
         </p>
         {/* Kiosk guest details */}
         {isKiosk && expanded && (
@@ -197,6 +215,18 @@ function OrderCard({ order, onAdvance, onCancel, advancing, canceling, userType 
               <p className="text-[12px] text-purple-300">
                 <i className="fa fa-location-dot mr-1.5 text-purple-500"></i>{order.guest_address}
               </p>
+            )}
+          </div>
+        )}
+
+        {/* Payment proof */}
+        {expanded && !paymentConfirmed && paymentMethod && ['qrph', 'bank', 'bank_transfer', 'cash'].includes(paymentMethod.toLowerCase()) && (
+          <div className="mt-2 rounded-xl bg-[#252525] border border-gray-800 px-3 py-2">
+            <p className="text-[10px] font-bold text-cream-muted uppercase tracking-widest mb-1.5">Payment Proof</p>
+            {order.payment_proof_url ? (
+              <img src={order.payment_proof_url} alt="proof" className="w-full max-h-56 object-contain rounded-lg" />
+            ) : (
+              <p className="text-xs text-gray-600 italic">No proof uploaded yet</p>
             )}
           </div>
         )}
@@ -239,6 +269,16 @@ function OrderCard({ order, onAdvance, onCancel, advancing, canceling, userType 
             {canceling === order.id ? 'Cancelling…' : 'Cancel'}
           </button>
         )}
+        {!paymentConfirmed && paymentMethod && ['qrph', 'bank', 'bank_transfer', 'cash'].includes(paymentMethod.toLowerCase()) && (
+          <button
+            type="button"
+            disabled={confirmingPayment === order.id}
+            onClick={() => confirmPayment(order.id)}
+            className="flex-1 rounded-2xl bg-green-600 py-3 text-sm font-bold text-white transition-colors hover:bg-green-700 disabled:opacity-50"
+          >
+            {confirmingPayment === order.id ? 'Confirming…' : '✓ Confirm Payment'}
+          </button>
+        )}
         {action && (
           <button
             type="button"
@@ -249,7 +289,7 @@ function OrderCard({ order, onAdvance, onCancel, advancing, canceling, userType 
             {advancing === order.id ? 'Updating…' : `${action.label} →`}
           </button>
         )}
-        {!action && !canCancel && (
+        {!action && !canCancel && !confirmPayment && (
           <div className="flex-1 rounded-2xl bg-[#252525] py-3 text-center text-sm text-gray-500">
             —
           </div>
@@ -275,6 +315,7 @@ function OrdersPage({ token, orders = [], loadingOrders, onOrdersChange, userTyp
   const [kioskOnly, setKioskOnly] = useState(false);
   const [advancing, setAdvancing] = useState(null);
   const [canceling, setCanceling] = useState(null);
+  const [confirmingPayment, setConfirmingPayment] = useState(null);
 
   async function advanceOrder(id, status) {
     setAdvancing(id);
@@ -297,6 +338,18 @@ function OrdersPage({ token, orders = [], loadingOrders, onOrdersChange, userTyp
       // keep previous state on error
     } finally {
       setCanceling(null);
+    }
+  }
+
+  async function confirmPayment(id) {
+    setConfirmingPayment(id);
+    try {
+      const updated = await confirmOrderPayment(id, token);
+      onOrdersChange(orders.map((o) => (o.id === updated.id ? { ...o, ...updated } : o)));
+    } catch {
+      // keep previous state on error
+    } finally {
+      setConfirmingPayment(null);
     }
   }
 
@@ -379,6 +432,8 @@ function OrdersPage({ token, orders = [], loadingOrders, onOrdersChange, userTyp
                 onCancel={cancelOrder}
                 canceling={canceling}
                 advancing={advancing}
+                confirmingPayment={confirmingPayment}
+                confirmPayment={confirmPayment}
                 userType={userType}
               />
             ))}
@@ -423,6 +478,8 @@ function OrdersPage({ token, orders = [], loadingOrders, onOrdersChange, userTyp
                           onCancel={cancelOrder}
                           canceling={canceling}
                           advancing={advancing}
+                          confirmingPayment={confirmingPayment}
+                          confirmPayment={confirmPayment}
                           userType={userType}
                         />
                       ))

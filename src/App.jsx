@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import AuthPage from './pages/AuthPage.jsx';
 import HomePage from './pages/HomePage.jsx';
 import OrdersPage from './pages/LoansPage.jsx';
@@ -10,9 +10,9 @@ import ProductsPage from './pages/ProductsPage.jsx';
 import UsersPage from './pages/UsersPage.jsx';
 import ReportsPage from './pages/ReportsPage.jsx';
 import Sidebar from './components/Sidebar.jsx';
-import { fetchAllOrders } from './api.js';
+import { fetchAllOrders, setUnauthorizedHandler as setApiUnauthorizedHandler } from './api.js';
 import GivePointsModal from './components/GivePointsModal.jsx';
-import { connectSocket, disconnectSocket } from './socket.js';
+import { connectSocket, disconnectSocket, setUnauthorizedHandler as setSocketUnauthorizedHandler } from './socket.js';
 import { playNewOrderSound, playStatusUpdateSound, unlockAudio } from './sound.js';
 
 const SESSION_KEY = 'admin_store_session';
@@ -23,9 +23,8 @@ function loadSession() {
 function saveSession(data) { localStorage.setItem(SESSION_KEY, JSON.stringify(data)); }
 function clearSession() { localStorage.removeItem(SESSION_KEY); }
 
-// user_type 2 = branch admin, user_type 3 = super admin
 function canReceiveKioskOrders(userType) {
-  return userType >= 3;
+  return Number(userType) >= 3;
 }
 
 function buildNotification(order, type) {
@@ -58,8 +57,46 @@ function buildNotification(order, type) {
   };
 }
 
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+  componentDidCatch(error, info) {
+    console.error('App crash', error, info);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <main className="min-h-screen bg-[#0f0f0f] flex flex-col items-center justify-center px-4 py-10">
+          <div className="w-full max-w-[360px] bg-[#1c1c1c] rounded-3xl p-7 shadow-2xl">
+            <h2 className="text-white text-2xl font-black uppercase tracking-wide mb-2">Something went wrong</h2>
+            <p className="text-gray-400 text-sm mb-4">The dashboard crashed while loading.</p>
+            <pre className="text-xs text-red-300 bg-black/40 p-3 rounded-xl mb-5 overflow-auto max-h-48">{String(this.state.error?.message || this.state.error)}</pre>
+            <button
+              type="button"
+              onClick={() => {
+                this.setState({ hasError: false, error: null });
+                window.location.reload();
+              }}
+              className="w-full bg-[#f0b429] text-black font-black uppercase tracking-[0.15em] rounded-2xl py-4 text-sm"
+            >
+              Reload
+            </button>
+          </div>
+        </main>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export default function App() {
-  const [session, setSession] = useState(loadSession);
+  const [session, setSession] = useState(() => loadSession());
+  const [ready, setReady] = useState(false);
   const [page, setPage] = useState('orders');
   const [orders, setOrders] = useState([]);
   const [notifications, setNotifications] = useState([]);
@@ -74,10 +111,7 @@ export default function App() {
     try {
       const data = await fetchAllOrders(token);
       const all = Array.isArray(data) ? data : [];
-      // Filter out kiosk orders for non-admin users
-      const visible = canReceiveKioskOrders(userType)
-        ? all
-        : all.filter((o) => o.type !== 'kiosk');
+      const visible = canReceiveKioskOrders(userType) ? all : all.filter((o) => o.type !== 'kiosk');
       setOrders(visible);
     } catch {
       // keep previous orders on error
@@ -87,16 +121,45 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!session) { return; }
+    let cancelled = false;
+
+    async function boot() {
+      const saved = loadSession();
+      if (!saved) {
+        setReady(true);
+        return;
+      }
+
+      if (saved.token) {
+        try {
+          await fetchAllOrders(saved.token);
+        } catch {
+          clearSession();
+          setSession(null);
+          setReady(true);
+          return;
+        }
+      }
+
+      if (!cancelled) {
+        setSession(saved);
+        setReady(true);
+      }
+    }
+
+    boot();
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (!session || !ready) return;
 
     loadOrders(session.token, session.user_type);
 
     const socket = connectSocket(session.token);
 
     socket.on('order:new', (order) => {
-      // Only show kiosk orders to admin/superadmin
       if (order.type === 'kiosk' && !canReceiveKioskOrders(session.user_type)) return;
-
       playNewOrderSound();
       setOrders((prev) => {
         if (prev.some((o) => o.id === order.id)) return prev;
@@ -106,9 +169,7 @@ export default function App() {
     });
 
     socket.on('order:updated', (order) => {
-      // Skip kiosk order updates for non-admin users
       if (order.type === 'kiosk' && !canReceiveKioskOrders(session.user_type)) return;
-
       playStatusUpdateSound();
       setOrders((prev) => prev.map((o) => o.id === order.id ? order : o));
       setNotifications((prev) => [buildNotification(order, 'updated'), ...prev]);
@@ -119,7 +180,7 @@ export default function App() {
       socket.off('order:updated');
       disconnectSocket();
     };
-  }, [session, loadOrders]);
+  }, [session, ready, loadOrders]);
 
   function handleAuthenticated(payload, email, name) {
     const profile = {
@@ -132,6 +193,8 @@ export default function App() {
     };
     saveSession(profile);
     setSession(profile);
+    setPage('orders');
+    setReady(true);
   }
 
   function handleLogout() {
@@ -140,10 +203,33 @@ export default function App() {
     setPage('home');
     setOrders([]);
     setNotifications([]);
+    setReady(true);
   }
+
+  const stableLogout = useCallback(() => handleLogout(), [handleLogout]);
+
+  useEffect(() => {
+    setApiUnauthorizedHandler(stableLogout);
+    setSocketUnauthorizedHandler(stableLogout);
+    return () => {
+      setApiUnauthorizedHandler(null);
+      setSocketUnauthorizedHandler(null);
+    };
+  }, [stableLogout]);
 
   function handleOrdersChange(updated) {
     setOrders(updated);
+  }
+
+  if (!ready) {
+    return (
+      <main className="min-h-screen bg-[#0f0f0f] flex flex-col items-center justify-center px-4 py-10">
+        <div className="w-full max-w-[360px] text-center">
+          <div className="mx-auto h-10 w-10 rounded-full border-2 border-[#f0b429] border-t-transparent animate-spin" />
+          <p className="mt-4 text-sm text-gray-400">Restoring session…</p>
+        </div>
+      </main>
+    );
   }
 
   if (!session) {

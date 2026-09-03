@@ -1,5 +1,11 @@
 const BASE = 'https://api.butfirstcoffee.ph';
 
+let onUnauthorized = null;
+
+export function setUnauthorizedHandler(handler) {
+  onUnauthorized = handler;
+}
+
 async function apiFetch(path, token, options = {}) {
   const res = await fetch(`${BASE}${path}`, {
     ...options,
@@ -10,11 +16,19 @@ async function apiFetch(path, token, options = {}) {
       ...options.headers,
     },
   });
+
   const text = await res.text();
   let data = null;
   if (text) {
     try { data = JSON.parse(text); } catch { data = text; }
   }
+
+  if (res.status === 401 || res.status === 403) {
+    if (onUnauthorized) onUnauthorized();
+    const msg = data?.message || data?.error || data?.detail || 'Session expired. Please log in again.';
+    throw new Error(typeof msg === 'string' ? msg : JSON.stringify(msg));
+  }
+
   if (!res.ok) {
     const msg = data?.message || data?.error || data?.detail || 'Request failed';
     throw new Error(typeof msg === 'string' ? msg : JSON.stringify(msg));
@@ -30,6 +44,12 @@ export function updateOrderStatus(id, status, token, notes) {
   return apiFetch(`/orders/${id}/status`, token, {
     method: 'PATCH',
     body: JSON.stringify({ status, ...(notes !== undefined ? { notes } : {}) }),
+  });
+}
+
+export function confirmOrderPayment(id, token) {
+  return apiFetch(`/orders/${id}/confirm-payment`, token, {
+    method: 'POST',
   });
 }
 
