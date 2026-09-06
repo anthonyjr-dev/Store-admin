@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { fetchProducts, createProduct, updateProduct, deleteProduct, uploadProductImage } from '../api.js';
 
-const emptyForm = { name: '', description: '', image: '', price: '', category: 'Coffee', available: true, size_prices: {} };
+const emptyForm = { name: '', description: '', image: '', price: '', category: 'Coffee', available: true, size_prices: { '12oz': 0 } };
 
 const INPUT = 'mt-1 w-full rounded-2xl border border-gray-700 bg-[#252525] px-4 py-2.5 text-white placeholder-gray-600 outline-none focus:border-[#f0b429] focus:ring-2 focus:ring-[#f0b429]/20';
 
@@ -174,9 +174,6 @@ function ProductModal({ initial, onSave, onClose, saving, saveError, onUpload, c
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <p className="text-xs font-bold text-cream-muted uppercase tracking-wide">Size Prices</p>
-              <button type="button" onClick={addSize} className="text-xs font-bold text-[#f0b429] hover:text-white">
-                + Add Size
-              </button>
             </div>
             <div className="space-y-2">
               {sizeEntries.map(({ label, value }) => (
@@ -211,6 +208,55 @@ function ProductModal({ initial, onSave, onClose, saving, saveError, onUpload, c
               {sizeEntries.length === 0 && (
                 <p className="text-xs text-gray-500">No size prices set.</p>
               )}
+              <div className="flex items-center gap-2">
+                <input
+                  name="newSizeLabel"
+                  placeholder="Size"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      const label = (e.target.value || '').trim();
+                      const price = parseFloat(e.target.form?.elements?.newSizePrice?.value || '0');
+                      if (!label) return;
+                      setForm((f) => ({ ...f, size_prices: { ...(f.size_prices || {}), [label]: isNaN(price) ? 0 : price } }));
+                      e.target.value = '';
+                      if (e.target.form?.elements?.newSizePrice) e.target.form.elements.newSizePrice.value = '';
+                    }
+                  }}
+                  className="w-24 rounded-xl border border-gray-700 bg-[#252525] px-3 py-2 text-xs text-white outline-none focus:border-[#f0b429]"
+                />
+                <input
+                  name="newSizePrice"
+                  placeholder="₱"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      const label = (e.target.form?.elements?.newSizeLabel?.value || '').trim();
+                      const price = parseFloat(e.target.value || '0');
+                      if (!label) return;
+                      setForm((f) => ({ ...f, size_prices: { ...(f.size_prices || {}), [label]: isNaN(price) ? 0 : price } }));
+                      if (e.target.form?.elements?.newSizeLabel) e.target.form.elements.newSizeLabel.value = '';
+                      e.target.value = '';
+                    }
+                  }}
+                  className="w-20 rounded-xl border border-gray-700 bg-[#252525] px-3 py-2 text-xs text-white outline-none focus:border-[#f0b429]"
+                />
+                <button type="button" onClick={() => {
+                  const labelInput = document.querySelector('input[name="newSizeLabel"]');
+                  const priceInput = document.querySelector('input[name="newSizePrice"]');
+                  const label = (labelInput?.value || '').trim();
+                  const price = parseFloat(priceInput?.value || '0');
+                  if (!label) return;
+                  setForm((f) => ({ ...f, size_prices: { ...(f.size_prices || {}), [label]: isNaN(price) ? 0 : price } }));
+                  if (labelInput) labelInput.value = '';
+                  if (priceInput) priceInput.value = '';
+                }} className="rounded-xl bg-[#f0b429] px-3 py-2 text-xs font-bold text-black hover:bg-[#e0a820]">
+                  Add
+                </button>
+              </div>
             </div>
           </div>
 

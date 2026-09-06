@@ -10,7 +10,7 @@ import ProductsPage from './pages/ProductsPage.jsx';
 import UsersPage from './pages/UsersPage.jsx';
 import ReportsPage from './pages/ReportsPage.jsx';
 import Sidebar from './components/Sidebar.jsx';
-import { fetchAllOrders, setUnauthorizedHandler as setApiUnauthorizedHandler } from './api.js';
+import { fetchAllOrders, fetchBranches, setUnauthorizedHandler as setApiUnauthorizedHandler } from './api.js';
 import GivePointsModal from './components/GivePointsModal.jsx';
 import { connectSocket, disconnectSocket, setUnauthorizedHandler as setSocketUnauthorizedHandler } from './socket.js';
 import { playNewOrderSound, playStatusUpdateSound, unlockAudio } from './sound.js';
@@ -99,6 +99,7 @@ export default function App() {
   const [ready, setReady] = useState(false);
   const [page, setPage] = useState('orders');
   const [orders, setOrders] = useState([]);
+  const [branches, setBranches] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [loadingOrders, setLoadingOrders] = useState(false);
   const [showGivePoints, setShowGivePoints] = useState(false);
@@ -109,10 +110,11 @@ export default function App() {
     if (!token) return;
     setLoadingOrders(true);
     try {
-      const data = await fetchAllOrders(token);
+      const [data, branchData] = await Promise.all([fetchAllOrders(token), fetchBranches()]);
       const all = Array.isArray(data) ? data : [];
       const visible = canReceiveKioskOrders(userType) ? all : all.filter((o) => o.type !== 'kiosk');
       setOrders(visible);
+      setBranches(Array.isArray(branchData) ? branchData : []);
     } catch {
       // keep previous orders on error
     } finally {
@@ -264,6 +266,7 @@ export default function App() {
             onNavigate={setPage}
             token={session.token}
             onOrdersChange={handleOrdersChange}
+            branches={branches}
           />
         );
       case 'orders':
@@ -275,6 +278,7 @@ export default function App() {
             onOrdersChange={handleOrdersChange}
             userType={session.user_type}
             canSeeKiosk={canReceiveKioskOrders(session.user_type)}
+            branches={branches}
           />
         );
       case 'products':      return <ProductsPage token={session.token} branchId={session.branch_id} userType={session.user_type} />;

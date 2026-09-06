@@ -24,7 +24,7 @@ function formatTime(iso) {
   return new Date(iso).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' });
 }
 
-function TypeBadge({ type }) {
+function TypeBadge({ type, branchName }) {
   const t = (type || '').toLowerCase();
   if (!t) return null;
   const isDelivery = t === 'delivery';
@@ -52,6 +52,15 @@ function MayaPaidBadge() {
     </span>
   );
 }
+
+function UnpaidBadge() {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-red-950/60 border border-red-800/50 px-2 py-0.5 text-[11px] font-bold text-red-400">
+      Unpaid
+    </span>
+  );
+}
+
 function StatusBadge({ status }) {
   const map = {
     pending:   'bg-blue-950/60 text-blue-400',
@@ -91,11 +100,7 @@ function ItemDetails({ item }) {
           <i className="fa fa-cup-straw mr-1 text-gray-600"></i>{size}
         </span>
       )}
-      {temp && (
-        <span className="rounded-lg bg-[#252525] px-2 py-0.5 text-[11px] text-gray-400">
-          <i className={'fa mr-1 text-gray-600 ' + ((String(temp)).toLowerCase().includes('hot') ? 'fa-fire' : 'fa-snowflake')}></i>{temp}
-        </span>
-      )}
+      {/* temperature hidden */}
       {sugar != null && (
         <span className="rounded-lg bg-[#252525] px-2 py-0.5 text-[11px] text-gray-400">
           <i className="fa fa-droplet mr-1 text-gray-600"></i>Sugar {sugar}{typeof sugar === 'number' && sugar <= 100 ? '%' : ''}
@@ -154,8 +159,8 @@ function CancelModal({ onProceed, onClose, loading }) {
   );
 }
 
-function OrderCard({ order, onAdvance, onCancel, advancing, canceling, userType }) {
-  const [expanded, setExpanded] = useState(false);
+function OrderCard({ order, onAdvance, onCancel, advancing, canceling, userType, branches = [] }) {
+  const expanded = true;
   const [showCancelModal, setShowCancelModal] = useState(false);
   const action = (order.status === 'ready' && order.delivery_type === 'pickup') ? { label: 'Complete', next: 'delivered' } : ACTION[order.status];
   const isKiosk = order.type === 'kiosk';
@@ -164,22 +169,23 @@ function OrderCard({ order, onAdvance, onCancel, advancing, canceling, userType 
     : (order.customer_name || order.customerName || order.user?.name || null);
   const orderType = order.type || order.order_type || null;
   const canCancel = CAN_CANCEL.includes(userType);
+  const paymentMethod = order.payment_method || null;
+  const paymentConfirmed = !!order.payment_confirmed;
+  const branchName = order.branch_id ? (branches.find((b) => b.id === order.branch_id)?.name ?? null) : null;
+  const isUnpaid = !!paymentMethod && !paymentConfirmed && order.status !== 'cancelled' && order.status !== 'delivered';
   const isPickedUpByRider = order.status === 'picked_up';
 
   return (
     <>
     <div className={"overflow-hidden rounded-2xl " + (isKiosk ? "bg-[#1a1525] border border-purple-900/40" : "bg-[#1e1e1e]")}>
-      <button
-        type="button"
-        onClick={() => setExpanded((v) => !v)}
-        className="w-full p-4 pb-3 text-left"
-      >
+      <div className="w-full p-4 pb-3 text-left">
         <div className="flex items-start justify-between gap-2">
           <div className="flex flex-wrap items-center gap-1.5 min-w-0">
             <span className="font-bold text-white text-[15px]">ORD-{order.id}</span>
             <StatusBadge status={order.status} />
-            {isKiosk ? <KioskBadge /> : (orderType && <TypeBadge type={orderType} />)}
+            {isKiosk ? <KioskBadge /> : (orderType && <TypeBadge type={orderType} branchName={branchName} />)}
             {order.payment_method === 'maya' && order.payment_confirmed && <MayaPaidBadge />}
+            {isUnpaid && <UnpaidBadge />}
             {isPickedUpByRider && (
               <span className="inline-flex items-center gap-1 rounded-full bg-teal-950/60 px-2 py-0.5 text-[11px] font-medium text-teal-300">
                 🛵 Picked up by rider
@@ -190,7 +196,7 @@ function OrderCard({ order, onAdvance, onCancel, advancing, canceling, userType 
             <span className="text-[#f0b429] text-lg font-black">
               ₱{Number(order.total).toLocaleString()}
             </span>
-            <i className={'fa fa-chevron-down text-xs text-gray-600 transition-transform duration-200 ' + (expanded ? 'rotate-180' : '')}></i>
+
           </div>
         </div>
         <p className="mt-1.5 text-sm text-gray-500">
@@ -210,7 +216,7 @@ function OrderCard({ order, onAdvance, onCancel, advancing, canceling, userType 
             )}
           </div>
         )}
-      </button>
+      </div>
 
       <div className="border-t border-gray-800 px-4 py-3 space-y-3">
         {order.items?.length ? (
@@ -249,7 +255,7 @@ function OrderCard({ order, onAdvance, onCancel, advancing, canceling, userType 
             {canceling === order.id ? 'Cancelling…' : 'Cancel'}
           </button>
         )}
-        {action && (
+        {action && !(action.next === 'preparing' && isUnpaid) && (
           <button
             type="button"
             disabled={advancing === order.id}
@@ -280,7 +286,7 @@ function OrderCard({ order, onAdvance, onCancel, advancing, canceling, userType 
   );
 }
 
-function HomePage({ profile, orders = [], loadingOrders, token, onOrdersChange }) {
+function HomePage({ profile, orders = [], loadingOrders, token, onOrdersChange, branches = [] }) {
   const [filter, setFilter] = useState('new');
   const [advancing, setAdvancing] = useState(null);
   const [canceling, setCanceling] = useState(null);
@@ -356,6 +362,7 @@ function HomePage({ profile, orders = [], loadingOrders, token, onOrdersChange }
               canceling={canceling}
               advancing={advancing}
               userType={userType}
+              branches={branches}
             />
           ))}
         </div>

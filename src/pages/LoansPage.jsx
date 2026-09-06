@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { updateOrderStatus, confirmOrderPayment } from '../api.js';
 
 const CAN_CANCEL = [1, 3];
@@ -32,7 +32,7 @@ function KioskBadge() {
   );
 }
 
-function TypeBadge({ type }) {
+function TypeBadge({ type, branchName }) {
   const t = (type || '').toLowerCase();
   if (!t) return null;
   const isDelivery = t === 'delivery';
@@ -40,6 +40,15 @@ function TypeBadge({ type }) {
     <span className={'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ' +
       (isDelivery ? 'bg-orange-950/60 text-orange-400' : 'bg-green-950/60 text-green-400')}>
       {isDelivery ? '🛺' : '🛵'} {isDelivery ? 'Delivery' : 'Pickup'}
+    </span>
+  );
+}
+
+
+function UnpaidBadge() {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-red-950/60 border border-red-800/50 px-2 py-0.5 text-[11px] font-bold text-red-400">
+      Unpaid
     </span>
   );
 }
@@ -61,11 +70,6 @@ function StatusBadge({ status, paymentConfirmed, paymentMethod }) {
   return (
     <span className={'rounded-full px-2 py-0.5 text-[11px] font-semibold ' + (map[status] || 'bg-gray-800 text-gray-400')}>
       {label[status] || status}
-      {!paymentConfirmed && paymentMethod && status !== 'cancelled' && status !== 'delivered' && (
-        <span className="ml-1.5 inline-flex items-center gap-1 rounded-full bg-yellow-950/60 px-1.5 py-0.5 text-[10px] font-bold text-yellow-400">
-          ⏳ Payment
-        </span>
-      )}
       {paymentConfirmed && (
         <span className="ml-1.5 inline-flex items-center gap-1 rounded-full bg-green-950/60 px-1.5 py-0.5 text-[10px] font-bold text-green-400">
           ✓ {paymentMethod === 'maya' ? 'Maya (paid)' : 'Paid'}
@@ -92,11 +96,7 @@ function ItemDetails({ item }) {
           <i className="fa fa-cup-straw mr-1 text-gray-600"></i>{size}
         </span>
       )}
-      {temp && (
-        <span className="rounded-lg bg-[#252525] px-2 py-0.5 text-[11px] text-gray-400">
-          <i className={'fa mr-1 text-gray-600 ' + ((String(temp)).toLowerCase().includes('hot') ? 'fa-fire' : 'fa-snowflake')}></i>{temp}
-        </span>
-      )}
+      {/* temperature hidden */}
       {sugar != null && (
         <span className="rounded-lg bg-[#252525] px-2 py-0.5 text-[11px] text-gray-400">
           <i className="fa fa-droplet mr-1 text-gray-600"></i>Sugar {sugar}{typeof sugar === 'number' && sugar <= 100 ? '%' : ''}
@@ -155,8 +155,102 @@ function CancelModal({ onProceed, onClose, loading }) {
   );
 }
 
-function OrderCard({ order, onAdvance, onCancel, confirming, canceling, advanceOrder, cancelOrder, userType, confirmPayment, confirmingPayment, advancing }) {
-  const [expanded, setExpanded] = useState(true);
+
+function ImageLightbox({ src, onClose }) {
+  const [scale, setScale] = useState(1);
+  const lastDist = useRef(null);
+  const lastTap = useRef(0);
+
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  const zoom = (delta) => setScale((s) => Math.min(Math.max(s + delta, 1), 6));
+
+  const handleWheel = (e) => { e.preventDefault(); zoom(e.deltaY < 0 ? 0.2 : -0.2); };
+
+  const handleTouchMove = (e) => {
+    if (e.touches.length === 2) {
+      e.preventDefault();
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (lastDist.current !== null) zoom((dist - lastDist.current) / 120);
+      lastDist.current = dist;
+    }
+  };
+
+  const handleTouchEnd = () => { lastDist.current = null; };
+
+  const handleImgClick = () => {
+    const now = Date.now();
+    if (now - lastTap.current < 300) setScale((s) => (s > 1 ? 1 : 2.5));
+    lastTap.current = now;
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-[999] flex items-center justify-center bg-black/95"
+      onClick={(e) => { if (e.target === e.currentTarget && scale <= 1) onClose(); }}
+      onWheel={handleWheel}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+    >
+      <button
+        onClick={onClose}
+        className="absolute top-4 right-4 z-10 flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20 transition text-lg"
+      >
+        <i className="fa fa-xmark" />
+      </button>
+      <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2">
+        <button
+          onClick={() => zoom(-0.5)}
+          className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20 transition"
+        >
+          <i className="fa fa-minus text-sm" />
+        </button>
+        <span className="text-white/60 text-xs w-14 text-center">{Math.round(scale * 100)}%</span>
+        <button
+          onClick={() => zoom(0.5)}
+          className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20 transition"
+        >
+          <i className="fa fa-plus text-sm" />
+        </button>
+        {scale > 1 && (
+          <button
+            onClick={() => setScale(1)}
+            className="rounded-full bg-white/10 px-3 py-1.5 text-xs text-white/70 hover:bg-white/20 transition"
+          >
+            Reset
+          </button>
+        )}
+      </div>
+      <div className="overflow-auto max-w-full max-h-full flex items-center justify-center" style={{ width: '100vw', height: '100vh' }}>
+        <img
+          src={src}
+          alt="Payment proof"
+          onClick={handleImgClick}
+          style={{
+            transform: `scale(${scale})`,
+            transition: 'transform 0.15s ease',
+            cursor: scale > 1 ? 'zoom-out' : 'zoom-in',
+            maxWidth: '90vw',
+            maxHeight: '85vh',
+            objectFit: 'contain',
+            borderRadius: 8,
+            userSelect: 'none',
+            touchAction: 'none',
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function OrderCard({ order, onAdvance, onCancel, confirming, canceling, advanceOrder, cancelOrder, userType, confirmPayment, confirmingPayment, advancing, branches = [] }) {
+  const expanded = true;
   const [showCancelModal, setShowCancelModal] = useState(false);
   const action = (order.status === 'ready' && order.delivery_type === 'pickup') ? { label: 'Complete', next: 'delivered' } : ACTION[order.status];
   const isKiosk = order.type === 'kiosk';
@@ -167,20 +261,19 @@ function OrderCard({ order, onAdvance, onCancel, confirming, canceling, advanceO
   const isPickedUpByRider = order.status === 'picked_up';
   const paymentConfirmed = !!order.payment_confirmed;
   const paymentMethod = order.payment_method || order.paymentMethod || null;
+  const branchName = order.branch_id ? (branches.find((b) => b.id === order.branch_id)?.name ?? null) : null;
+  const isUnpaid = !!paymentMethod && !paymentConfirmed && order.status !== 'cancelled' && order.status !== 'delivered';
+  const [lightboxImg, setLightboxImg] = useState(null);
 
   return (
     <>
     <div className={'overflow-hidden rounded-2xl ' + (isKiosk ? 'bg-[#1a1525] border border-purple-900/40' : 'bg-[#1e1e1e]')}>
-      <button
-        type="button"
-        onClick={() => setExpanded((v) => !v)}
-        className="w-full p-4 pb-3 text-left"
-      >
+      <div className="w-full p-4 pb-3 text-left">
         <div className="flex items-start justify-between gap-2">
           <div className="flex flex-wrap items-center gap-1.5 min-w-0">
             <span className="font-bold text-white text-[15px]">ORD-{order.id}</span>
             <StatusBadge status={order.status} paymentConfirmed={paymentConfirmed} paymentMethod={paymentMethod} />
-            {isKiosk && <KioskBadge />}{order.delivery_type && <TypeBadge type={order.delivery_type} />}
+            {isKiosk && <KioskBadge />}{order.delivery_type && <TypeBadge type={order.delivery_type} branchName={branchName} />}{isUnpaid && <UnpaidBadge />}
             {isPickedUpByRider && (
               <span className="inline-flex items-center gap-1 rounded-full bg-teal-950/60 px-2 py-0.5 text-[11px] font-medium text-teal-300">
                 🛵 Picked up by rider
@@ -191,7 +284,7 @@ function OrderCard({ order, onAdvance, onCancel, confirming, canceling, advanceO
             <span className="text-[#f0b429] text-lg font-black">
               ₱{Number(order.total).toLocaleString()}
             </span>
-            <i className={'fa fa-chevron-down text-xs text-gray-600 transition-transform duration-200 ' + (expanded ? 'rotate-180' : '')}></i>
+
           </div>
         </div>
         <p className="mt-1.5 text-sm text-gray-500">
@@ -224,13 +317,13 @@ function OrderCard({ order, onAdvance, onCancel, confirming, canceling, advanceO
           <div className="mt-2 rounded-xl bg-[#252525] border border-gray-800 px-3 py-2">
             <p className="text-[10px] font-bold text-cream-muted uppercase tracking-widest mb-1.5">Payment Proof</p>
             {order.payment_proof_url ? (
-              <img src={order.payment_proof_url} alt="proof" className="w-full max-h-56 object-contain rounded-lg" />
+              <img src={order.payment_proof_url} alt="proof" onClick={() => setLightboxImg(order.payment_proof_url)} className="w-full max-h-56 object-contain rounded-lg cursor-zoom-in hover:opacity-90 transition-opacity" />
             ) : (
               <p className="text-xs text-gray-600 italic">No proof uploaded yet</p>
             )}
           </div>
         )}
-      </button>
+      </div>
 
       <div className="border-t border-gray-800 px-4 py-3 space-y-3">
         {order.items?.length ? (
@@ -279,7 +372,7 @@ function OrderCard({ order, onAdvance, onCancel, confirming, canceling, advanceO
             {confirmingPayment === order.id ? 'Confirming…' : '✓ Confirm Payment'}
           </button>
         )}
-        {action && (
+        {action && !(action.next === 'preparing' && isUnpaid) && (
           <button
             type="button"
             disabled={advancing === order.id}
@@ -296,6 +389,7 @@ function OrderCard({ order, onAdvance, onCancel, confirming, canceling, advanceO
         )}
       </div>
     </div>
+    {lightboxImg && <ImageLightbox src={lightboxImg} onClose={() => setLightboxImg(null)} />}
     {showCancelModal && (
       <CancelModal
         loading={canceling === order.id}
@@ -310,7 +404,7 @@ function OrderCard({ order, onAdvance, onCancel, confirming, canceling, advanceO
   );
 }
 
-function OrdersPage({ token, orders = [], loadingOrders, onOrdersChange, userType, canSeeKiosk }) {
+function OrdersPage({ token, orders = [], loadingOrders, onOrdersChange, userType, canSeeKiosk, branches = [] }) {
   const [filter, setFilter] = useState('new');
   const [kioskOnly, setKioskOnly] = useState(false);
   const [advancing, setAdvancing] = useState(null);
@@ -435,6 +529,7 @@ function OrdersPage({ token, orders = [], loadingOrders, onOrdersChange, userTyp
                 confirmingPayment={confirmingPayment}
                 confirmPayment={confirmPayment}
                 userType={userType}
+                branches={branches}
               />
             ))}
           </div>
@@ -481,6 +576,7 @@ function OrdersPage({ token, orders = [], loadingOrders, onOrdersChange, userTyp
                           confirmingPayment={confirmingPayment}
                           confirmPayment={confirmPayment}
                           userType={userType}
+                          branches={branches}
                         />
                       ))
                     )}
