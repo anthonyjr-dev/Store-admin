@@ -40,6 +40,7 @@ function TypeBadge({ type, branchName }) {
     <span className={'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ' +
       (isDelivery ? 'bg-orange-950/60 text-orange-400' : 'bg-green-950/60 text-green-400')}>
       {isDelivery ? '🛺' : '🛵'} {isDelivery ? 'Delivery' : 'Pickup'}
+      {branchName ? <span className="ml-1 opacity-80">· {branchName}</span> : null}
     </span>
   );
 }
