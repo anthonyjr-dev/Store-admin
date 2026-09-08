@@ -1,7 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import { fetchUsers, fetchBranches, updateUser, createUser } from '../api.js';
+import { ROLE, ROLE_LABELS } from '../roles.js';
 
-const USER_TYPE_LABELS = { 1: 'Customer', 2: 'Branch Admin', 3: 'Super Admin' };
+const USER_TYPE_LABELS = ROLE_LABELS;
+
+// Roles that see every branch's data — must not be pinned to a single branch.
+const BRANCHLESS_ROLES = [ROLE.SUPER_ADMIN, ROLE.ADMIN];
 
 const BLANK_FORM = { name: '', email: '', password: '', user_type: 1, branch_id: '', isActive: true };
 
@@ -22,8 +26,18 @@ function UserModal({ user, branches, onSave, onClose, saving, saveError }) {
 
   function update(e) {
     const { name, value, type, checked } = e.target;
-    setForm((f) => ({ ...f, [name]: type === 'checkbox' ? checked : value }));
+    setForm((f) => {
+      const next = { ...f, [name]: type === 'checkbox' ? checked : value };
+      // Super Admin / Admin see all branches — clear any branch assignment.
+      if (name === 'user_type' && BRANCHLESS_ROLES.includes(parseInt(value))) {
+        next.branch_id = '';
+      }
+      return next;
+    });
   }
+
+  const roleNum = parseInt(form.user_type);
+  const branchless = BRANCHLESS_ROLES.includes(roleNum);
 
   function submit(e) {
     e.preventDefault();
@@ -77,16 +91,23 @@ function UserModal({ user, branches, onSave, onClose, saving, saveError }) {
           <label className="block text-sm font-semibold text-gray-300">
             Role
             <select name="user_type" value={form.user_type} onChange={update} className={INPUT}>
-              <option value={1}>Customer</option>
-              <option value={2}>Branch Admin</option>
-              <option value={3}>Super Admin</option>
+              <option value={ROLE.CUSTOMER}>Customer</option>
+              <option value={ROLE.BRANCH_ADMIN}>Branch Admin</option>
+              <option value={ROLE.SUPER_ADMIN}>Super Admin</option>
+              <option value={ROLE.ADMIN}>Admin</option>
             </select>
+            {roleNum === ROLE.ADMIN && (
+              <p className="mt-1.5 text-xs font-normal text-gray-500">
+                Full data access (all branches &amp; kiosk orders), but the portal only
+                shows <span className="text-gray-300">Orders</span>, <span className="text-gray-300">Alerts</span> and <span className="text-gray-300">Reports</span>.
+              </p>
+            )}
           </label>
 
           <label className="block text-sm font-semibold text-gray-300">
             Branch Assignment
-            <select name="branch_id" value={form.branch_id} onChange={update} className={INPUT}>
-              <option value="">— No branch (Super Admin) —</option>
+            <select name="branch_id" value={form.branch_id} onChange={update} disabled={branchless} className={`${INPUT} disabled:opacity-40 disabled:cursor-not-allowed`}>
+              <option value="">{branchless ? '— All branches —' : '— No branch —'}</option>
               {branches.map((b) => (
                 <option key={b.id} value={b.id}>{b.name}</option>
               ))}
@@ -116,9 +137,11 @@ function UserRow({ user, branches, onEdit }) {
     ? (branches.find((b) => b.id === user.branch_id)?.name ?? `Branch #${user.branch_id}`)
     : '—';
   const typeLabel = USER_TYPE_LABELS[user.user_type] ?? `Type ${user.user_type}`;
-  const typeColor = user.user_type >= 3
+  const typeColor = user.user_type === ROLE.ADMIN
+    ? 'bg-blue-950/50 text-blue-400'
+    : user.user_type >= ROLE.SUPER_ADMIN
     ? 'bg-purple-950/50 text-purple-400'
-    : user.user_type === 2
+    : user.user_type === ROLE.BRANCH_ADMIN
     ? 'bg-[#f0b429]/15 text-[#f0b429]'
     : 'bg-[#252525] text-gray-500';
 

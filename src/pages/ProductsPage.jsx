@@ -17,6 +17,8 @@ function ProductModal({ initial, onSave, onClose, saving, saveError, onUpload, c
   const [pendingFile, setPendingFile] = useState(null);
   const [uploadPreview, setUploadPreview] = useState('');
   const [uploading, setUploading] = useState(false);
+  const [newSizeLabel, setNewSizeLabel] = useState('');
+  const [newSizePrice, setNewSizePrice] = useState('');
   const fileInputRef = useRef(null);
   const blobRef = useRef('');
 
@@ -25,6 +27,8 @@ function ProductModal({ initial, onSave, onClose, saving, saveError, onUpload, c
     setImageMode(resolvedInitial.image ? 'url' : 'upload');
     setPendingFile(null);
     setUploadPreview('');
+    setNewSizeLabel('');
+    setNewSizePrice('');
   }, [resolvedInitial]);
 
   const sizeEntries = useMemo(() => {
@@ -34,19 +38,29 @@ function ProductModal({ initial, onSave, onClose, saving, saveError, onUpload, c
   }, [form.size_prices, initial?.size_prices, form.price]);
 
   const updateSize = (label, value) => {
-    const next = { ...(form.size_prices || {}) };
-    next[label] = Number(value);
-    setForm((f) => ({ ...f, size_prices: next }));
+    setForm((f) => ({ ...f, size_prices: { ...(f.size_prices || {}), [label]: Number(value) } }));
   };
 
-  const addSize = () => {
-    const label = prompt('Size label, e.g. 1 Liter Hot');
+  const renameSize = (oldLabel, newLabel, currentValue) => {
+    if (!newLabel) return;
+    setForm((f) => {
+      const next = { ...(f.size_prices || {}) };
+      delete next[oldLabel];
+      next[newLabel] = currentValue;
+      return { ...f, size_prices: next };
+    });
+  };
+
+  const commitNewSize = () => {
+    const label = newSizeLabel.trim();
+    const price = parseFloat(newSizePrice);
     if (!label) return;
-    setForm((f) => ({ ...f, size_prices: { ...(f.size_prices || {}), [label]: 0 } }));
+    setForm((f) => ({ ...f, size_prices: { ...(f.size_prices || {}), [label]: isNaN(price) ? 0 : price } }));
+    setNewSizeLabel('');
+    setNewSizePrice('');
   };
 
   const removeSize = (label) => {
-    if (label === '12oz') return;
     setForm((f) => {
       const next = { ...(f.size_prices || {}) };
       delete next[label];
@@ -181,15 +195,7 @@ function ProductModal({ initial, onSave, onClose, saving, saveError, onUpload, c
                   <input
                     type="text"
                     value={label}
-                    onChange={(e) => {
-                      const old = label;
-                      const nextLabel = e.target.value;
-                      if (!nextLabel) return;
-                      const next = { ...(form.size_prices || {}) };
-                      delete next[old];
-                      next[nextLabel] = value;
-                      setForm((f) => ({ ...f, size_prices: next }));
-                    }}
+                    onChange={(e) => renameSize(label, e.target.value, value)}
                     className="w-24 rounded-xl border border-gray-700 bg-[#252525] px-3 py-2 text-xs text-white outline-none focus:border-[#f0b429]"
                   />
                   <input
@@ -210,50 +216,23 @@ function ProductModal({ initial, onSave, onClose, saving, saveError, onUpload, c
               )}
               <div className="flex items-center gap-2">
                 <input
-                  name="newSizeLabel"
+                  value={newSizeLabel}
                   placeholder="Size"
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      const label = (e.target.value || '').trim();
-                      const price = parseFloat(e.target.form?.elements?.newSizePrice?.value || '0');
-                      if (!label) return;
-                      setForm((f) => ({ ...f, size_prices: { ...(f.size_prices || {}), [label]: isNaN(price) ? 0 : price } }));
-                      e.target.value = '';
-                      if (e.target.form?.elements?.newSizePrice) e.target.form.elements.newSizePrice.value = '';
-                    }
-                  }}
+                  onChange={(e) => setNewSizeLabel(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commitNewSize(); } }}
                   className="w-24 rounded-xl border border-gray-700 bg-[#252525] px-3 py-2 text-xs text-white outline-none focus:border-[#f0b429]"
                 />
                 <input
-                  name="newSizePrice"
+                  value={newSizePrice}
                   placeholder="₱"
                   type="number"
                   min="0"
                   step="0.01"
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      const label = (e.target.form?.elements?.newSizeLabel?.value || '').trim();
-                      const price = parseFloat(e.target.value || '0');
-                      if (!label) return;
-                      setForm((f) => ({ ...f, size_prices: { ...(f.size_prices || {}), [label]: isNaN(price) ? 0 : price } }));
-                      if (e.target.form?.elements?.newSizeLabel) e.target.form.elements.newSizeLabel.value = '';
-                      e.target.value = '';
-                    }
-                  }}
+                  onChange={(e) => setNewSizePrice(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commitNewSize(); } }}
                   className="w-20 rounded-xl border border-gray-700 bg-[#252525] px-3 py-2 text-xs text-white outline-none focus:border-[#f0b429]"
                 />
-                <button type="button" onClick={() => {
-                  const labelInput = document.querySelector('input[name="newSizeLabel"]');
-                  const priceInput = document.querySelector('input[name="newSizePrice"]');
-                  const label = (labelInput?.value || '').trim();
-                  const price = parseFloat(priceInput?.value || '0');
-                  if (!label) return;
-                  setForm((f) => ({ ...f, size_prices: { ...(f.size_prices || {}), [label]: isNaN(price) ? 0 : price } }));
-                  if (labelInput) labelInput.value = '';
-                  if (priceInput) priceInput.value = '';
-                }} className="rounded-xl bg-[#f0b429] px-3 py-2 text-xs font-bold text-black hover:bg-[#e0a820]">
+                <button type="button" onClick={commitNewSize} className="rounded-xl bg-[#f0b429] px-3 py-2 text-xs font-bold text-black hover:bg-[#e0a820]">
                   Add
                 </button>
               </div>

@@ -14,6 +14,12 @@ import { fetchAllOrders, fetchBranches, setUnauthorizedHandler as setApiUnauthor
 import GivePointsModal from './components/GivePointsModal.jsx';
 import { connectSocket, disconnectSocket, setUnauthorizedHandler as setSocketUnauthorizedHandler } from './socket.js';
 import { playNewOrderSound, playStatusUpdateSound, unlockAudio } from './sound.js';
+import {
+  ADMIN_ALLOWED_PAGES,
+  canReceiveKioskOrders,
+  isRestrictedAdmin as isRestrictedAdminRole,
+  isSuperAdmin as isSuperAdminRole,
+} from './roles.js';
 
 const SESSION_KEY = 'admin_store_session';
 
@@ -22,10 +28,6 @@ function loadSession() {
 }
 function saveSession(data) { localStorage.setItem(SESSION_KEY, JSON.stringify(data)); }
 function clearSession() { localStorage.removeItem(SESSION_KEY); }
-
-function canReceiveKioskOrders(userType) {
-  return Number(userType) >= 3;
-}
 
 function buildNotification(order, type) {
   const now = new Date();
@@ -241,10 +243,10 @@ export default function App() {
   const pendingCount = orders.filter((o) => o.status === 'pending').length;
   const unreadAlerts = notifications.filter((n) => !n.read).length;
 
-  const isSuperAdmin = session.branch_id === null || session.branch_id === undefined || session.user_type === 3;
-  const isBranchAdmin = session.user_type === 2;
+  const isSuperAdmin = isSuperAdminRole(session);
+  const restrictedAdmin = isRestrictedAdminRole(session.user_type);
 
-  const navItems = [
+  const allNavItems = [
     { page: 'orders',      label: 'Orders',          icon: 'fa-bag-shopping',   badge: pendingCount },
     { page: 'products',      label: 'Menu',             icon: 'fa-box-open' },
     { page: 'reports',       label: 'Reports',          icon: 'fa-chart-bar' },
@@ -254,8 +256,19 @@ export default function App() {
     { page: 'profile',       label: 'Profile',          icon: 'fa-user' },
   ];
 
+  // ROLE.ADMIN keeps super-admin data access but only these pages in the nav.
+  const navItems = restrictedAdmin
+    ? ADMIN_ALLOWED_PAGES
+        .map((p) => allNavItems.find((item) => item.page === p))
+        .filter(Boolean)
+    : allNavItems;
+
+  // Block a restricted admin from rendering a page they can't navigate to.
+  const effectivePage =
+    restrictedAdmin && !ADMIN_ALLOWED_PAGES.includes(page) ? 'orders' : page;
+
   function renderPage() {
-    switch (page) {
+    switch (effectivePage) {
       case 'home':
         return (
           <HomePage
@@ -311,7 +324,7 @@ export default function App() {
     <div className="flex min-h-screen bg-[#111111]">
       <Sidebar
         navItems={navItems}
-        activePage={page}
+        activePage={effectivePage}
         onNavigate={setPage}
         storeName={session.name}
         orders={orders}
@@ -342,7 +355,7 @@ export default function App() {
           </div>
           <div className="flex overflow-x-auto scrollbar-hide">
             {navItems.map((item) => {
-              const active = page === item.page;
+              const active = effectivePage === item.page;
               return (
                 <button
                   key={item.page}
@@ -368,7 +381,7 @@ export default function App() {
         </header>
 
         <main className="flex-1 overflow-y-auto px-3 py-3 pb-4 md:px-4 md:py-4 md:pb-4">
-          <div className={page === 'home' ? '' : 'mx-auto'}>
+          <div className={effectivePage === 'home' ? '' : 'mx-auto'}>
             {renderPage()}
           </div>
         </main>

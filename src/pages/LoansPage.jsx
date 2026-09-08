@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { updateOrderStatus, confirmOrderPayment } from '../api.js';
+import { ROLE } from '../roles.js';
 
-const CAN_CANCEL = [1, 3];
+// Super Admin + Admin (and legacy type 1) may cancel orders; Branch Admin may not.
+const CAN_CANCEL = [ROLE.CUSTOMER, ROLE.SUPER_ADMIN, ROLE.ADMIN];
 
 const FILTERS = [
   { id: 'new',       label: 'New',       statuses: ['pending', 'confirmed'] },
