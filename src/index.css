@@ -1,0 +1,45 @@
+body {
+  margin: 0;
+  background: #111111;
+  font-family: Inter, system-ui, -apple-system, sans-serif;
+  color: #fff;
+}
+
+button {
+  cursor: pointer;
+}
+
+.page {
+  display: none;
+}
+
+.page.active {
+  display: block;
+}
+
+.card {
+  border-radius: 16px;
+  background: #1e1e1e;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+}
+
+.text-brand { color: #f0b429; }
+.bg-brand   { background-color: #f0b429; }
+
+/* Prevent iOS Safari zoom on input focus */
+input, textarea, select {
+  font-size: max(16px, 1em);
+}
+
+/* Horizontally scrollable tab row — no page overflow */
+.tab-scroll-container {
+  overflow-x: auto;
+  overflow-y: visible;
+  padding-bottom: 4px;
+  -webkit-overflow-scrolling: touch;
+}
+.tab-scroll-container::-webkit-scrollbar { display: none; }
+.tab-scroll-container { scrollbar-width: none; -ms-overflow-style: none; }
+
+.scrollbar-hide::-webkit-scrollbar { display: none; }
+.scrollbar-hide { scrollbar-width: none; -ms-overflow-style: none; }
