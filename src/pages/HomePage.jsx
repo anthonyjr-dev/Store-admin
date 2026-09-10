@@ -62,6 +62,14 @@ function UnpaidBadge() {
   );
 }
 
+function FreeDeliveryBadge() {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-green-950/60 border border-green-800/50 px-2 py-0.5 text-[11px] font-bold text-green-400">
+      🛵 Free Delivery
+    </span>
+  );
+}
+
 function StatusBadge({ status }) {
   const map = {
     pending:   'bg-blue-950/60 text-blue-400',
@@ -187,6 +195,7 @@ function OrderCard({ order, onAdvance, onCancel, advancing, canceling, userType,
             {isKiosk ? <KioskBadge /> : (orderType && <TypeBadge type={orderType} branchName={branchName} />)}
             {order.payment_method === 'maya' && order.payment_confirmed && <MayaPaidBadge />}
             {isUnpaid && <UnpaidBadge />}
+            {order.delivery_type === 'delivery' && order.free_delivery && <FreeDeliveryBadge />}
             {isPickedUpByRider && (
               <span className="inline-flex items-center gap-1 rounded-full bg-teal-950/60 px-2 py-0.5 text-[11px] font-medium text-teal-300">
                 🛵 Picked up by rider
@@ -236,6 +245,15 @@ function OrderCard({ order, onAdvance, onCancel, advancing, canceling, userType,
           ))
         ) : (
           <p className="text-sm text-gray-600">—</p>
+        )}
+        {order.notes && (
+          <div className="flex items-start gap-2 rounded-xl bg-[#f0b429]/10 border border-[#f0b429]/30 px-3 py-2">
+            <i className="fa fa-comment-dots text-[#f0b429] mt-0.5 shrink-0"></i>
+            <p className="text-[12px] text-[#f0b429]">
+              <span className="font-bold uppercase tracking-wide text-[10px] mr-1.5">Order note</span>
+              {order.notes}
+            </p>
+          </div>
         )}
         {order.store_notes && (
           <div className="flex items-start gap-2 rounded-xl bg-red-950/20 border border-red-900/30 px-3 py-2">

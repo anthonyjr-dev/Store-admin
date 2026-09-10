@@ -1,19 +1,23 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { fetchProducts, createProduct, updateProduct, deleteProduct, uploadProductImage } from '../api.js';
 
+// Serving types a product can be sold as. `bottle` is opt-in per product.
 const TEMPS = [
   { key: 'iced', label: 'Iced', icon: '🧊' },
   { key: 'hot', label: 'Hot', icon: '🔥' },
+  { key: 'bottle', label: 'Bottle', icon: '🍶' },
 ];
 
 const makeTempOptions = (price = 0) => ({
   iced: { enabled: true, size_prices: { '12oz': Number(price) || 0 }, disabled_sizes: [] },
   hot: { enabled: true, size_prices: { '12oz': Number(price) || 0 }, disabled_sizes: [] },
+  bottle: { enabled: false, size_prices: { '12oz': Number(price) || 0 }, disabled_sizes: [] },
 });
 
-// Build a full { iced, hot } structure from whatever the product row has,
-// synthesising from the legacy temperature_enabled / size_prices fields when the
-// new temperature_options field is missing. Size values are absolute peso prices.
+// Build a full { iced, hot, bottle } structure from whatever the product row
+// has, synthesising from the legacy temperature_enabled / size_prices fields
+// when the new temperature_options field is missing. Size values are absolute
+// peso prices. `bottle` defaults to disabled.
 function normalizeTempOptions(initial) {
   const basePrice = Number(initial?.price) || 0;
   const legacyEnabled = initial?.temperature_enabled ?? true;
@@ -52,17 +56,22 @@ function normalizeTempOptions(initial) {
         disabled_sizes: cleanDisabled(o.disabled_sizes, size_prices),
       };
     }
-    return { enabled: legacyEnabled, size_prices: cleanSizes(legacySizes), disabled_sizes: [] };
+    return {
+      enabled: key === 'bottle' ? false : legacyEnabled,
+      size_prices: cleanSizes(legacySizes),
+      disabled_sizes: [],
+    };
   };
-  return { iced: pick('iced'), hot: pick('hot') };
+  return { iced: pick('iced'), hot: pick('hot'), bottle: pick('bottle') };
 }
 
-// Which temperature+size the storefront menu card price (`product.price`) mirrors.
-// Prefers the size whose price already equals the saved base price, then falls
-// back to the first orderable size (Iced before Hot).
+// Which serving-type+size the storefront menu card price (`product.price`)
+// mirrors. Prefers the size whose price already equals the saved base price,
+// then falls back to the first orderable size (Iced → Hot → Bottle).
+const SERVING_KEYS = ['iced', 'hot', 'bottle'];
 function inferDefaultPick(tempOpts, price) {
   const target = Number(price);
-  for (const key of ['iced', 'hot']) {
+  for (const key of SERVING_KEYS) {
     const sizes = tempOpts?.[key]?.size_prices || {};
     const off = new Set(tempOpts?.[key]?.disabled_sizes || []);
     for (const [label, val] of Object.entries(sizes)) {
@@ -71,7 +80,7 @@ function inferDefaultPick(tempOpts, price) {
       }
     }
   }
-  for (const key of ['iced', 'hot']) {
+  for (const key of SERVING_KEYS) {
     if (tempOpts?.[key]?.enabled === false) continue;
     const sizes = tempOpts?.[key]?.size_prices || {};
     const off = new Set(tempOpts?.[key]?.disabled_sizes || []);
@@ -87,6 +96,29 @@ const TAG_OPTIONS = ['', 'Best Seller', 'Promo', 'New'];
 const emptyForm = { name: '', description: '', image: '', price: '', category: 'Coffee', available: true, tag: '', temperature_options: makeTempOptions() };
 
 const INPUT = 'mt-1 w-full rounded-2xl border border-gray-700 bg-[#252525] px-4 py-2.5 text-white placeholder-gray-600 outline-none focus:border-[#f0b429] focus:ring-2 focus:ring-[#f0b429]/20';
+
+// Size-label field. Edits stay local while typing and only commit the rename on
+// blur / Enter — committing on every keystroke used to remount the row and drop
+// focus, and made it impossible to clear the field.
+function SizeLabelInput({ value, onCommit, className }) {
+  const [text, setText] = useState(value);
+  useEffect(() => { setText(value); }, [value]);
+  const commit = () => {
+    const t = text.trim();
+    if (t && t !== value) onCommit(t);
+    else setText(value);
+  };
+  return (
+    <input
+      type="text"
+      value={text}
+      onChange={(e) => setText(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); } }}
+      className={className}
+    />
+  );
+}
 
 function ProductModal({ initial, onSave, onClose, saving, saveError, onUpload, categories }) {
   const resolvedInitial = useMemo(() => ({
@@ -226,7 +258,7 @@ function ProductModal({ initial, onSave, onClose, saving, saveError, onUpload, c
       if (Number.isFinite(picked) && picked > 0) basePrice = picked;
     }
     // Coerce any blank / invalid size price back to the base price before saving
-    const opts = { iced: null, hot: null };
+    const opts = { iced: null, hot: null, bottle: null };
     for (const { key } of TEMPS) {
       const src = tempOptions[key] || { enabled: true, size_prices: {}, disabled_sizes: [] };
       const sizes = {};
@@ -245,8 +277,8 @@ function ProductModal({ initial, onSave, onClose, saving, saveError, onUpload, c
       const kept = Object.fromEntries(Object.entries(o.size_prices).filter(([l]) => !off.has(l)));
       return Object.keys(kept).length ? kept : o.size_prices;
     };
-    const temperature_enabled = !!(opts.iced.enabled || opts.hot.enabled);
-    const size_prices = { ...orderable(opts.hot), ...orderable(opts.iced) };
+    const temperature_enabled = !!(opts.iced.enabled || opts.hot.enabled || opts.bottle.enabled);
+    const size_prices = { ...orderable(opts.hot), ...orderable(opts.bottle), ...orderable(opts.iced) };
     onSave({
       ...form,
       price: basePrice,
@@ -362,10 +394,10 @@ function ProductModal({ initial, onSave, onClose, saving, saveError, onUpload, c
 
           <div className="space-y-3">
             <div>
-              <p className="text-xs font-bold text-cream-muted uppercase tracking-wide">Temperature &amp; Sizes</p>
+              <p className="text-xs font-bold text-cream-muted uppercase tracking-wide">Serving Type &amp; Sizes</p>
               <p className="mt-0.5 text-xs font-normal text-gray-500">
-                Enable Iced and Hot independently. Each temperature has its own sizes with absolute ₱ prices.
-                Use the On/Off button beside a size to switch just that size off. Disabled temperatures and
+                Enable Iced, Hot and Bottle independently. Each serving type has its own sizes with absolute ₱ prices.
+                Use the On/Off button beside a size to switch just that size off. Disabled serving types and
                 sizes show greyed-out in the storefront and can't be picked. The ◉ radio on the left marks
                 the size whose price shows on the storefront menu card.
               </p>
@@ -391,10 +423,12 @@ function ProductModal({ initial, onSave, onClose, saving, saveError, onUpload, c
                   </label>
 
                   <div className={`space-y-2 ${opt.enabled ? '' : 'pointer-events-none opacity-40'}`}>
-                    {sizes.map(([sizeLabel, value]) => {
+                    {sizes.map(([sizeLabel, value], idx) => {
                       const sizeOn = isTempSizeEnabled(key, sizeLabel);
                       return (
-                        <div key={sizeLabel} className="flex items-center gap-2">
+                        // Key by position, not by label — keying by the label
+                        // remounts the row on every keystroke and drops focus.
+                        <div key={`${key}-${idx}`} className="flex items-center gap-2">
                           <input
                             type="radio"
                             name="defaultSize"
@@ -415,10 +449,9 @@ function ProductModal({ initial, onSave, onClose, saving, saveError, onUpload, c
                           >
                             {sizeOn ? 'On' : 'Off'}
                           </button>
-                          <input
-                            type="text"
+                          <SizeLabelInput
                             value={sizeLabel}
-                            onChange={(e) => renameTempSize(key, sizeLabel, e.target.value)}
+                            onCommit={(next) => renameTempSize(key, sizeLabel, next)}
                             className={`w-20 rounded-xl border border-gray-700 bg-[#252525] px-3 py-2 text-xs text-white outline-none focus:border-[#f0b429] ${sizeOn ? '' : 'line-through opacity-50'}`}
                           />
                           <div className={`flex flex-1 items-center rounded-xl border border-gray-700 bg-[#252525] pl-3 focus-within:border-[#f0b429] ${sizeOn ? '' : 'opacity-50'}`}>

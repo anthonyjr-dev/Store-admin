@@ -11,6 +11,7 @@ const SIM_STEPS = [
 
 const ACTIVE = ['ASSIGNING_DRIVER', 'ON_GOING', 'PICKED_UP'];
 const PILL = {
+  PENDING: 'bg-gray-800 text-gray-400',
   ASSIGNING_DRIVER: 'bg-amber-950/60 text-amber-300',
   ON_GOING: 'bg-blue-950/60 text-blue-300',
   PICKED_UP: 'bg-teal-950/60 text-teal-300',
@@ -20,6 +21,7 @@ const PILL = {
   EXPIRED: 'bg-gray-800 text-gray-400',
 };
 const LABEL = {
+  PENDING: 'Rider booked when ready',
   ASSIGNING_DRIVER: 'Finding rider…',
   ON_GOING: 'Rider on the way',
   PICKED_UP: 'Picked up',
@@ -47,6 +49,16 @@ export default function LalamoveDispatch({ order, token }) {
   useEffect(() => {
     load();
   }, [load, order.status]);
+
+  // Once the order is `ready` the backend auto-books a rider; poll briefly so
+  // the panel picks up the booking without a manual refresh.
+  useEffect(() => {
+    if (order.status !== 'ready') return;
+    if (data && data.lalamoveOrderId) return;
+    const id = setInterval(load, 5000);
+    const stop = setTimeout(() => clearInterval(id), 90000);
+    return () => { clearInterval(id); clearTimeout(stop); };
+  }, [load, order.status, data]);
 
   if (order.delivery_type !== 'delivery') return null;
 

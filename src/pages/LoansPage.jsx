@@ -345,6 +345,15 @@ function OrderCard({ order, onAdvance, onCancel, confirming, canceling, advanceO
         ) : (
           <p className="text-sm text-gray-600">—</p>
         )}
+        {order.notes && (
+          <div className="flex items-start gap-2 rounded-xl bg-[#f0b429]/10 border border-[#f0b429]/30 px-3 py-2">
+            <i className="fa fa-comment-dots text-[#f0b429] mt-0.5 shrink-0"></i>
+            <p className="text-[12px] text-[#f0b429]">
+              <span className="font-bold uppercase tracking-wide text-[10px] mr-1.5">Order note</span>
+              {order.notes}
+            </p>
+          </div>
+        )}
         {order.store_notes && (
           <div className="flex items-start gap-2 rounded-xl bg-red-950/20 border border-red-900/30 px-3 py-2">
             <i className="fa fa-circle-info text-red-400 mt-0.5 shrink-0"></i>
@@ -557,7 +566,7 @@ function OrdersPage({ token, orders = [], loadingOrders, onOrdersChange, userTyp
               .filter((o) => col.statuses.includes(o.status))
               .filter((o) => kioskOnly ? o.type === 'kiosk' : true);
             return (
-              <div key={col.id} style={{ width: 288, flexShrink: 0, height: 'calc(100vh - 110px)' }}>
+              <div key={col.id} style={{ width: 288, flexShrink: 0, height: 'calc(100vh - 48px)' }}>
                 {/* Column header */}
                 <div className="mb-3 flex items-center gap-2 rounded-xl bg-[#1a1a1a] px-3 py-2.5">
                   <span className={'h-2 w-2 rounded-full shrink-0 ' + (COLUMN_ACCENT[col.id] || 'bg-gray-500')} />

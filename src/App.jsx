@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import AuthPage from './pages/AuthPage.jsx';
 import HomePage from './pages/HomePage.jsx';
 import OrdersPage from './pages/LoansPage.jsx';
@@ -13,7 +13,10 @@ import Sidebar from './components/Sidebar.jsx';
 import { fetchAllOrders, fetchBranches, setUnauthorizedHandler as setApiUnauthorizedHandler } from './api.js';
 import GivePointsModal from './components/GivePointsModal.jsx';
 import { connectSocket, disconnectSocket, setUnauthorizedHandler as setSocketUnauthorizedHandler } from './socket.js';
-import { playNewOrderSound, playStatusUpdateSound, unlockAudio } from './sound.js';
+import { playNewOrderAlert, playStatusUpdateSound, unlockAudio, activateAudio, audioBlocked } from './sound.js';
+
+// Orders sitting in the "New" board (see FILTERS in the Orders page).
+const NEW_BOARD_STATUSES = ['pending', 'confirmed'];
 
 const SESSION_KEY = 'admin_store_session';
 
@@ -103,8 +106,32 @@ export default function App() {
   const [notifications, setNotifications] = useState([]);
   const [loadingOrders, setLoadingOrders] = useState(false);
   const [showGivePoints, setShowGivePoints] = useState(false);
+  // Shown only when Chrome still has audio blocked after the auto-restore
+  // attempt — a one-time click enables it and the state is remembered.
+  const [soundBlocked, setSoundBlocked] = useState(false);
 
-  useEffect(() => { unlockAudio(); }, []);
+  useEffect(() => {
+    unlockAudio();               // registers gesture listeners + tries to restore
+    const sync = () => {
+      setSoundBlocked(audioBlocked());
+      // A gesture-driven resume() is async — re-check once it has settled.
+      setTimeout(() => setSoundBlocked(audioBlocked()), 200);
+    };
+    // Re-check after the async restore settles, and whenever a gesture / focus
+    // may have unlocked the context.
+    const t = setTimeout(sync, 500);
+    window.addEventListener('focus', sync);
+    document.addEventListener('click', sync, true);
+    document.addEventListener('keydown', sync, true);
+    document.addEventListener('touchstart', sync, true);
+    return () => {
+      clearTimeout(t);
+      window.removeEventListener('focus', sync);
+      document.removeEventListener('click', sync, true);
+      document.removeEventListener('keydown', sync, true);
+      document.removeEventListener('touchstart', sync, true);
+    };
+  }, []);
 
   const loadOrders = useCallback(async (token, userType) => {
     if (!token) return;
@@ -162,7 +189,7 @@ export default function App() {
 
     socket.on('order:new', (order) => {
       if (order.type === 'kiosk' && !canReceiveKioskOrders(session.user_type)) return;
-      playNewOrderSound();
+      playNewOrderAlert();   // 5× chime per new order
       setOrders((prev) => {
         if (prev.some((o) => o.id === order.id)) return prev;
         return [order, ...prev];
@@ -192,6 +219,19 @@ export default function App() {
       disconnectSocket();
     };
   }, [session, ready, loadOrders]);
+
+  // Recurring reminder: while any order is still sitting in the "New" board,
+  // replay the new-order chime every minute until staff moves it along.
+  const ordersRef = useRef(orders);
+  useEffect(() => { ordersRef.current = orders; }, [orders]);
+  useEffect(() => {
+    if (!session || !ready) return;
+    const id = setInterval(() => {
+      const hasUnhandled = ordersRef.current.some((o) => NEW_BOARD_STATUSES.includes(o.status));
+      if (hasUnhandled) playNewOrderAlert();
+    }, 60000);
+    return () => clearInterval(id);
+  }, [session, ready]);
 
   function handleAuthenticated(payload, email, name) {
     const profile = {
@@ -326,6 +366,7 @@ export default function App() {
         orders={orders}
         pendingCount={pendingCount}
         onLogout={handleLogout}
+        onGivePoints={() => setShowGivePoints(true)}
       />
 
       <div className="flex min-w-0 flex-1 flex-col overflow-x-hidden">
@@ -377,16 +418,27 @@ export default function App() {
         </header>
 
         <main className="flex-1 overflow-y-auto px-3 py-3 pb-4 md:px-4 md:py-4 md:pb-4">
+          {soundBlocked && (page === 'orders' || page === 'home') && (
+            <button
+              type="button"
+              onClick={async () => { await activateAudio(); setSoundBlocked(audioBlocked()); }}
+              className="mb-3 flex w-full items-center justify-center gap-2 rounded-xl border border-[#f0b429]/40 bg-[#f0b429]/10 px-4 py-2.5 text-sm font-semibold text-[#f0b429] transition-colors hover:bg-[#f0b429]/20"
+            >
+              <i className="fa fa-volume-high" />
+              Tap once to enable new-order sound
+            </button>
+          )}
           <div className={page === 'home' ? '' : 'mx-auto'}>
             {renderPage()}
           </div>
         </main>
       </div>
 
+      {/* Floating Give Points — mobile only; desktop uses the sidebar button */}
       {session && (
         <button
           onClick={() => setShowGivePoints(true)}
-          className="fixed bottom-6 right-6 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-[#f0b429] text-black shadow-2xl hover:bg-[#e8ac24] active:bg-[#d9a020] transition-colors"
+          className="fixed bottom-6 right-6 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-[#f0b429] text-black shadow-2xl hover:bg-[#e8ac24] active:bg-[#d9a020] transition-colors md:hidden"
           title="Give Points"
         >
           <i className="fa fa-qrcode text-xl" />

@@ -1,4 +1,4 @@
-function Sidebar({ navItems, activePage, onNavigate, storeName, orders = [], pendingCount = 0, onLogout }) {
+function Sidebar({ navItems, activePage, onNavigate, storeName, orders = [], pendingCount = 0, onLogout, onGivePoints }) {
   const today = new Date();
   const todayOrders = orders.filter((o) => {
     const d = new Date(o.createdAt);
@@ -11,7 +11,7 @@ function Sidebar({ navItems, activePage, onNavigate, storeName, orders = [], pen
   const activeOrders = orders.filter((o) => !['delivered', 'cancelled'].includes(o.status)).length;
 
   return (
-    <aside className="hidden min-h-screen w-[272px] shrink-0 flex-col bg-[#161616] border-r border-gray-800 px-5 py-6 md:flex">
+    <aside className="hidden sticky top-0 self-start h-screen w-[272px] shrink-0 flex-col overflow-y-auto bg-[#161616] border-r border-gray-800 px-5 py-6 md:flex">
 
       {/* Logo */}
       <div className="flex items-center gap-3 mb-7">
@@ -59,6 +59,18 @@ function Sidebar({ navItems, activePage, onNavigate, storeName, orders = [], pen
           );
         })}
       </nav>
+
+      {/* Give Points */}
+      {onGivePoints && (
+        <button
+          type="button"
+          onClick={onGivePoints}
+          className="mt-2 flex w-full items-center gap-3 rounded-xl border border-gray-800 bg-[#1e1e1e] px-4 py-3 text-left text-sm font-semibold text-gray-300 transition-colors hover:border-[#f0b429]/40 hover:text-white"
+        >
+          <i className="fa fa-qrcode w-4 shrink-0 text-center text-base text-[#f0b429]"></i>
+          <span className="flex-1 truncate">Give Points</span>
+        </button>
+      )}
 
       {/* TODAY */}
       <div className="mt-6 pt-6 border-t border-gray-800">
