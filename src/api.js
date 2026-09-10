@@ -1,4 +1,4 @@
-const BASE = 'https://api.bfc.net.ph';
+import { API_BASE as BASE } from './config.js';
 
 let onUnauthorized = null;
 

@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import logo from '../assets/logo.png';
 
-const LOGIN_URL = 'https://api.bfc.net.ph/auth/dashboard/login';
+import { API_BASE } from './config.js';
+
+const LOGIN_URL = `${API_BASE}/auth/dashboard/login`;
 
 // user_type: 1=admin, 2=branch_admin, 3=superadmin
 const ALLOWED_TYPES = new Set([1, 2, 3]);

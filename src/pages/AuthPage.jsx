@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import logo from '../assets/logo.png';
 import { PORTAL_ROLES } from '../roles.js';
+import { API_BASE } from '../config.js';
 
-const LOGIN_URL = 'https://api.bfc.net.ph/auth/dashboard/login';
+const LOGIN_URL = `${API_BASE}/auth/dashboard/login`;
 
 // user_type: 2=branch_admin, 3=superadmin, 4=admin (nav-restricted)
 const ALLOWED_TYPES = new Set(PORTAL_ROLES);

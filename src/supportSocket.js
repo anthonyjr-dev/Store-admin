@@ -1,6 +1,7 @@
 import { io } from 'socket.io-client';
+import { API_BASE } from './config.js';
 
-const BASE_URL = 'https://api.bfc.net.ph';
+const BASE_URL = API_BASE;
 export const SUPPORT_API_BASE = BASE_URL;
 
 let socket = null;

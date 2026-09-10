@@ -1,4 +1,5 @@
 import { io } from 'socket.io-client';
+import { API_BASE } from './config.js';
 
 let socket = null;
 let unauthorizedHandler = null;
@@ -41,7 +42,7 @@ export function connectSocket(token) {
   currentToken = token;
 
   try {
-    socket = io('https://api.bfc.net.ph', {
+    socket = io(API_BASE, {
       auth: token ? { token } : {},
       transports: ['websocket', 'polling'],
       autoConnect: false,
