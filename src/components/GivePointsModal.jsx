@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import jsQR from 'jsqr';
 
-const BASE = 'https://api.butfirstcoffee.ph';
+const BASE = 'https://api.bfc.net.ph';
 
 async function apiFetch(path, token, options = {}) {
   const res = await fetch(`${BASE}${path}`, {

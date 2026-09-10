@@ -1,7 +1,90 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { fetchProducts, createProduct, updateProduct, deleteProduct, uploadProductImage } from '../api.js';
 
-const emptyForm = { name: '', description: '', image: '', price: '', category: 'Coffee', available: true, size_prices: { '12oz': 0 } };
+const TEMPS = [
+  { key: 'iced', label: 'Iced', icon: '🧊' },
+  { key: 'hot', label: 'Hot', icon: '🔥' },
+];
+
+const makeTempOptions = (price = 0) => ({
+  iced: { enabled: true, size_prices: { '12oz': Number(price) || 0 }, disabled_sizes: [] },
+  hot: { enabled: true, size_prices: { '12oz': Number(price) || 0 }, disabled_sizes: [] },
+});
+
+// Build a full { iced, hot } structure from whatever the product row has,
+// synthesising from the legacy temperature_enabled / size_prices fields when the
+// new temperature_options field is missing. Size values are absolute peso prices.
+function normalizeTempOptions(initial) {
+  const basePrice = Number(initial?.price) || 0;
+  const legacyEnabled = initial?.temperature_enabled ?? true;
+  const legacySizes = initial?.size_prices && Object.keys(initial.size_prices).length
+    ? initial.size_prices
+    : null;
+
+  const cleanSizes = (raw) => {
+    const out = {};
+    if (raw && typeof raw === 'object') {
+      for (const [label, value] of Object.entries(raw)) {
+        const key = String(label).trim();
+        if (!key) continue;
+        const num = Number(value);
+        out[key] = Number.isFinite(num) && num > 0 ? num : basePrice;
+      }
+    }
+    if (!Object.keys(out).length) out['12oz'] = basePrice;
+    return out;
+  };
+
+  const cleanDisabled = (raw, sizes) => {
+    if (!Array.isArray(raw)) return [];
+    const valid = new Set(Object.keys(sizes));
+    return [...new Set(raw.map((s) => String(s).trim()).filter((s) => s && valid.has(s)))];
+  };
+
+  const raw = initial?.temperature_options || null;
+  const pick = (key) => {
+    const o = raw?.[key];
+    if (o && typeof o === 'object') {
+      const size_prices = cleanSizes(o.size_prices);
+      return {
+        enabled: typeof o.enabled === 'boolean' ? o.enabled : legacyEnabled,
+        size_prices,
+        disabled_sizes: cleanDisabled(o.disabled_sizes, size_prices),
+      };
+    }
+    return { enabled: legacyEnabled, size_prices: cleanSizes(legacySizes), disabled_sizes: [] };
+  };
+  return { iced: pick('iced'), hot: pick('hot') };
+}
+
+// Which temperature+size the storefront menu card price (`product.price`) mirrors.
+// Prefers the size whose price already equals the saved base price, then falls
+// back to the first orderable size (Iced before Hot).
+function inferDefaultPick(tempOpts, price) {
+  const target = Number(price);
+  for (const key of ['iced', 'hot']) {
+    const sizes = tempOpts?.[key]?.size_prices || {};
+    const off = new Set(tempOpts?.[key]?.disabled_sizes || []);
+    for (const [label, val] of Object.entries(sizes)) {
+      if (!off.has(label) && Number.isFinite(target) && target > 0 && Number(val) === target) {
+        return { temp: key, label };
+      }
+    }
+  }
+  for (const key of ['iced', 'hot']) {
+    if (tempOpts?.[key]?.enabled === false) continue;
+    const sizes = tempOpts?.[key]?.size_prices || {};
+    const off = new Set(tempOpts?.[key]?.disabled_sizes || []);
+    const first = Object.keys(sizes).find((l) => !off.has(l));
+    if (first) return { temp: key, label: first };
+  }
+  return null;
+}
+
+// Storefront badge options shown on the bfc-order menu card. '' = no badge.
+const TAG_OPTIONS = ['', 'Best Seller', 'Promo', 'New'];
+
+const emptyForm = { name: '', description: '', image: '', price: '', category: 'Coffee', available: true, tag: '', temperature_options: makeTempOptions() };
 
 const INPUT = 'mt-1 w-full rounded-2xl border border-gray-700 bg-[#252525] px-4 py-2.5 text-white placeholder-gray-600 outline-none focus:border-[#f0b429] focus:ring-2 focus:ring-[#f0b429]/20';
 
@@ -10,9 +93,13 @@ function ProductModal({ initial, onSave, onClose, saving, saveError, onUpload, c
     ...emptyForm,
     ...initial,
     price: initial ? String(initial.price ?? '') : '',
-    size_prices: initial?.size_prices || {},
+    tag: initial?.tag ?? '',
+    temperature_options: normalizeTempOptions(initial),
   }), [initial]);
   const [form, setForm] = useState(resolvedInitial);
+  const [defaultPick, setDefaultPick] = useState(
+    () => inferDefaultPick(resolvedInitial.temperature_options, resolvedInitial.price),
+  );
   const [imageMode, setImageMode] = useState(initial?.image ? 'url' : 'upload');
   const [pendingFile, setPendingFile] = useState(null);
   const [uploadPreview, setUploadPreview] = useState('');
@@ -22,36 +109,84 @@ function ProductModal({ initial, onSave, onClose, saving, saveError, onUpload, c
 
   useEffect(() => {
     setForm(resolvedInitial);
+    setDefaultPick(inferDefaultPick(resolvedInitial.temperature_options, resolvedInitial.price));
     setImageMode(resolvedInitial.image ? 'url' : 'upload');
     setPendingFile(null);
     setUploadPreview('');
   }, [resolvedInitial]);
 
-  const sizeEntries = useMemo(() => {
-    const raw = form.size_prices || initial?.size_prices || {};
-    const base = raw && Object.keys(raw).length ? raw : { '12oz': Number(form.price) || 0 };
-    return Object.entries(base).map(([label, value]) => ({ label, value: Number(value) }));
-  }, [form.size_prices, initial?.size_prices, form.price]);
+  const tempOptions = form.temperature_options || makeTempOptions(form.price);
 
-  const updateSize = (label, value) => {
-    const next = { ...(form.size_prices || {}) };
-    next[label] = Number(value);
-    setForm((f) => ({ ...f, size_prices: next }));
-  };
-
-  const addSize = () => {
-    const label = prompt('Size label, e.g. 1 Liter Hot');
-    if (!label) return;
-    setForm((f) => ({ ...f, size_prices: { ...(f.size_prices || {}), [label]: 0 } }));
-  };
-
-  const removeSize = (label) => {
-    if (label === '12oz') return;
+  const patchTemp = (temp, patch) => {
     setForm((f) => {
-      const next = { ...(f.size_prices || {}) };
-      delete next[label];
-      return { ...f, size_prices: next };
+      const current = f.temperature_options || makeTempOptions(f.price);
+      return {
+        ...f,
+        temperature_options: {
+          ...current,
+          [temp]: { ...current[temp], ...patch },
+        },
+      };
     });
+  };
+
+  const setTempEnabled = (temp, enabled) => patchTemp(temp, { enabled });
+
+  const isDefaultPick = (temp, label) => defaultPick?.temp === temp && defaultPick?.label === label;
+
+  // Mark this temperature+size as the price shown on the storefront menu card.
+  const chooseDefault = (temp, label) => {
+    setDefaultPick({ temp, label });
+    const val = tempOptions[temp]?.size_prices?.[label];
+    if (val !== undefined && val !== '') setForm((f) => ({ ...f, price: String(val) }));
+  };
+
+  const setTempSizePrice = (temp, label, value) => {
+    const sizes = { ...(tempOptions[temp]?.size_prices || {}) };
+    sizes[label] = value === '' ? '' : Number(value);
+    patchTemp(temp, { size_prices: sizes });
+    if (isDefaultPick(temp, label)) {
+      setForm((f) => ({ ...f, price: value === '' ? '' : String(Number(value)) }));
+    }
+  };
+
+  const renameTempSize = (temp, oldLabel, nextLabel) => {
+    if (!nextLabel) return;
+    const src = tempOptions[temp]?.size_prices || {};
+    const sizes = {};
+    // Preserve key order while renaming
+    for (const [k, v] of Object.entries(src)) sizes[k === oldLabel ? nextLabel : k] = v;
+    const disabled_sizes = (tempOptions[temp]?.disabled_sizes || []).map((s) => (s === oldLabel ? nextLabel : s));
+    patchTemp(temp, { size_prices: sizes, disabled_sizes });
+    if (isDefaultPick(temp, oldLabel)) setDefaultPick({ temp, label: nextLabel });
+  };
+
+  const addTempSize = (temp, label, price) => {
+    const key = (label || '').trim();
+    if (!key) return;
+    const sizes = { ...(tempOptions[temp]?.size_prices || {}) };
+    const num = parseFloat(price);
+    sizes[key] = Number.isNaN(num) ? 0 : num;
+    patchTemp(temp, { size_prices: sizes });
+  };
+
+  const removeTempSize = (temp, label) => {
+    const sizes = { ...(tempOptions[temp]?.size_prices || {}) };
+    delete sizes[label];
+    const disabled_sizes = (tempOptions[temp]?.disabled_sizes || []).filter((s) => s !== label);
+    patchTemp(temp, { size_prices: sizes, disabled_sizes });
+    if (isDefaultPick(temp, label)) setDefaultPick(null);
+  };
+
+  const isTempSizeEnabled = (temp, label) => !(tempOptions[temp]?.disabled_sizes || []).includes(label);
+
+  const toggleTempSize = (temp, label, enabled) => {
+    const set = new Set(tempOptions[temp]?.disabled_sizes || []);
+    if (enabled) set.delete(label);
+    else set.add(label);
+    patchTemp(temp, { disabled_sizes: [...set] });
+    // A switched-off size can't be the storefront default.
+    if (!enabled && isDefaultPick(temp, label)) setDefaultPick(null);
   };
 
   useEffect(() => {
@@ -60,16 +195,9 @@ function ProductModal({ initial, onSave, onClose, saving, saveError, onUpload, c
 
   function update(e) {
     const { name, value, type, checked } = e.target;
-    setForm((f) => {
-      const next = { ...f, [name]: type === 'checkbox' ? checked : value };
-      if (name === 'price') {
-        const price = parseFloat(value);
-        if (!isNaN(price) && f.size_prices && f.size_prices['12oz'] === Number(f.price)) {
-          next.size_prices = { ...f.size_prices, '12oz': price };
-        }
-      }
-      return next;
-    });
+    // Typing a menu price by hand detaches it from any picked size.
+    if (name === 'price') setDefaultPick(null);
+    setForm((f) => ({ ...f, [name]: type === 'checkbox' ? checked : value }));
   }
 
   function handleFileChange(e) {
@@ -90,7 +218,44 @@ function ProductModal({ initial, onSave, onClose, saving, saveError, onUpload, c
       try { imageUrl = await onUpload(pendingFile); }
       finally { setUploading(false); }
     }
-    onSave({ ...form, price: parseFloat(form.price), image: imageUrl });
+    // The storefront menu card shows `product.price`. When a size is picked as
+    // the default, that size's price wins; otherwise use the typed menu price.
+    let basePrice = parseFloat(form.price);
+    if (defaultPick) {
+      const picked = Number(tempOptions[defaultPick.temp]?.size_prices?.[defaultPick.label]);
+      if (Number.isFinite(picked) && picked > 0) basePrice = picked;
+    }
+    // Coerce any blank / invalid size price back to the base price before saving
+    const opts = { iced: null, hot: null };
+    for (const { key } of TEMPS) {
+      const src = tempOptions[key] || { enabled: true, size_prices: {}, disabled_sizes: [] };
+      const sizes = {};
+      for (const [label, value] of Object.entries(src.size_prices || {})) {
+        const num = Number(value);
+        sizes[label] = Number.isFinite(num) && num > 0 ? num : (basePrice || 0);
+      }
+      if (!Object.keys(sizes).length) sizes['12oz'] = basePrice || 0;
+      const disabled_sizes = (src.disabled_sizes || []).filter((s) => s in sizes);
+      opts[key] = { enabled: !!src.enabled, size_prices: sizes, disabled_sizes };
+    }
+    // Keep the legacy fields in sync for any consumer not yet reading
+    // temperature_options — legacy map carries only the still-orderable sizes.
+    const orderable = (o) => {
+      const off = new Set(o.disabled_sizes);
+      const kept = Object.fromEntries(Object.entries(o.size_prices).filter(([l]) => !off.has(l)));
+      return Object.keys(kept).length ? kept : o.size_prices;
+    };
+    const temperature_enabled = !!(opts.iced.enabled || opts.hot.enabled);
+    const size_prices = { ...orderable(opts.hot), ...orderable(opts.iced) };
+    onSave({
+      ...form,
+      price: basePrice,
+      image: imageUrl,
+      tag: form.tag?.trim() || null,
+      temperature_options: opts,
+      temperature_enabled,
+      size_prices,
+    });
   }
 
   const previewSrc = imageMode === 'upload' ? uploadPreview : (form.image || '');
@@ -158,8 +323,11 @@ function ProductModal({ initial, onSave, onClose, saving, saveError, onUpload, c
 
           <div className="grid grid-cols-2 gap-4">
             <label className="block text-sm font-semibold text-gray-300">
-              Price (₱)
+              Menu price (₱)
               <input name="price" type="number" required min="0" step="0.01" value={form.price} onChange={update} className={INPUT} />
+              <span className="mt-1 block text-[11px] font-normal text-gray-500">
+                Shown on the storefront menu card. Pick a size below to use its price, or type one here.
+              </span>
             </label>
             <label className="block text-sm font-semibold text-gray-300">
               Category
@@ -171,93 +339,152 @@ function ProductModal({ initial, onSave, onClose, saving, saveError, onUpload, c
             </label>
           </div>
 
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <p className="text-xs font-bold text-cream-muted uppercase tracking-wide">Size Prices</p>
-            </div>
-            <div className="space-y-2">
-              {sizeEntries.map(({ label, value }) => (
-                <div key={label} className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={label}
-                    onChange={(e) => {
-                      const old = label;
-                      const nextLabel = e.target.value;
-                      if (!nextLabel) return;
-                      const next = { ...(form.size_prices || {}) };
-                      delete next[old];
-                      next[nextLabel] = value;
-                      setForm((f) => ({ ...f, size_prices: next }));
-                    }}
-                    className="w-24 rounded-xl border border-gray-700 bg-[#252525] px-3 py-2 text-xs text-white outline-none focus:border-[#f0b429]"
-                  />
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={value}
-                    onChange={(e) => updateSize(label, e.target.value)}
-                    className="flex-1 rounded-xl border border-gray-700 bg-[#252525] px-3 py-2 text-xs text-white outline-none focus:border-[#f0b429]"
-                  />
-                  <button type="button" onClick={() => removeSize(label)} className="text-red-400 hover:text-red-300 text-xs font-bold">
-                    ✕
-                  </button>
-                </div>
+          <label className="block text-sm font-semibold text-gray-300">
+            Tag / Badge
+            <input
+              name="tag"
+              list="tag-options"
+              value={form.tag || ''}
+              onChange={update}
+              maxLength={30}
+              placeholder="e.g. Best Seller — or leave blank"
+              className={INPUT}
+            />
+            <datalist id="tag-options">
+              {TAG_OPTIONS.filter(Boolean).map((t) => (
+                <option key={t} value={t} />
               ))}
-              {sizeEntries.length === 0 && (
-                <p className="text-xs text-gray-500">No size prices set.</p>
-              )}
-              <div className="flex items-center gap-2">
-                <input
-                  name="newSizeLabel"
-                  placeholder="Size"
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      const label = (e.target.value || '').trim();
-                      const price = parseFloat(e.target.form?.elements?.newSizePrice?.value || '0');
-                      if (!label) return;
-                      setForm((f) => ({ ...f, size_prices: { ...(f.size_prices || {}), [label]: isNaN(price) ? 0 : price } }));
-                      e.target.value = '';
-                      if (e.target.form?.elements?.newSizePrice) e.target.form.elements.newSizePrice.value = '';
-                    }
-                  }}
-                  className="w-24 rounded-xl border border-gray-700 bg-[#252525] px-3 py-2 text-xs text-white outline-none focus:border-[#f0b429]"
-                />
-                <input
-                  name="newSizePrice"
-                  placeholder="₱"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      const label = (e.target.form?.elements?.newSizeLabel?.value || '').trim();
-                      const price = parseFloat(e.target.value || '0');
-                      if (!label) return;
-                      setForm((f) => ({ ...f, size_prices: { ...(f.size_prices || {}), [label]: isNaN(price) ? 0 : price } }));
-                      if (e.target.form?.elements?.newSizeLabel) e.target.form.elements.newSizeLabel.value = '';
-                      e.target.value = '';
-                    }
-                  }}
-                  className="w-20 rounded-xl border border-gray-700 bg-[#252525] px-3 py-2 text-xs text-white outline-none focus:border-[#f0b429]"
-                />
-                <button type="button" onClick={() => {
-                  const labelInput = document.querySelector('input[name="newSizeLabel"]');
-                  const priceInput = document.querySelector('input[name="newSizePrice"]');
-                  const label = (labelInput?.value || '').trim();
-                  const price = parseFloat(priceInput?.value || '0');
-                  if (!label) return;
-                  setForm((f) => ({ ...f, size_prices: { ...(f.size_prices || {}), [label]: isNaN(price) ? 0 : price } }));
-                  if (labelInput) labelInput.value = '';
-                  if (priceInput) priceInput.value = '';
-                }} className="rounded-xl bg-[#f0b429] px-3 py-2 text-xs font-bold text-black hover:bg-[#e0a820]">
-                  Add
-                </button>
-              </div>
+            </datalist>
+            <span className="mt-1 block text-[11px] font-normal text-gray-500">
+              Shown as a badge on the storefront menu card. Pick a suggestion or type your own; leave blank for no badge.
+            </span>
+          </label>
+
+          <div className="space-y-3">
+            <div>
+              <p className="text-xs font-bold text-cream-muted uppercase tracking-wide">Temperature &amp; Sizes</p>
+              <p className="mt-0.5 text-xs font-normal text-gray-500">
+                Enable Iced and Hot independently. Each temperature has its own sizes with absolute ₱ prices.
+                Use the On/Off button beside a size to switch just that size off. Disabled temperatures and
+                sizes show greyed-out in the storefront and can't be picked. The ◉ radio on the left marks
+                the size whose price shows on the storefront menu card.
+              </p>
             </div>
+
+            {TEMPS.map(({ key, label, icon }) => {
+              const opt = tempOptions[key] || { enabled: true, size_prices: {}, disabled_sizes: [] };
+              const sizes = Object.entries(opt.size_prices || {});
+              return (
+                <div key={key} className={`rounded-2xl border p-3 space-y-2 transition
+                  ${opt.enabled ? 'border-gray-700 bg-[#202020]' : 'border-gray-800 bg-[#1a1a1a]'}`}>
+                  <label className="flex cursor-pointer items-center justify-between text-sm font-semibold text-gray-200">
+                    <span>{icon} {label}</span>
+                    <span className="flex items-center gap-2 text-xs font-normal text-gray-400">
+                      {opt.enabled ? 'Enabled' : 'Disabled'}
+                      <input
+                        type="checkbox"
+                        checked={opt.enabled}
+                        onChange={(e) => setTempEnabled(key, e.target.checked)}
+                        className="h-4 w-4 rounded accent-[#f0b429]"
+                      />
+                    </span>
+                  </label>
+
+                  <div className={`space-y-2 ${opt.enabled ? '' : 'pointer-events-none opacity-40'}`}>
+                    {sizes.map(([sizeLabel, value]) => {
+                      const sizeOn = isTempSizeEnabled(key, sizeLabel);
+                      return (
+                        <div key={sizeLabel} className="flex items-center gap-2">
+                          <input
+                            type="radio"
+                            name="defaultSize"
+                            checked={isDefaultPick(key, sizeLabel)}
+                            disabled={!sizeOn}
+                            onChange={() => chooseDefault(key, sizeLabel)}
+                            title="Use this size's price on the storefront menu card"
+                            className="h-4 w-4 shrink-0 accent-[#f0b429] disabled:opacity-30"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => toggleTempSize(key, sizeLabel, !sizeOn)}
+                            title={sizeOn ? 'Size enabled — click to disable' : 'Size disabled — click to enable'}
+                            className={`shrink-0 w-14 rounded-lg px-1.5 py-1.5 text-[10px] font-bold uppercase tracking-wide transition
+                              ${sizeOn
+                                ? 'bg-[#f0b429]/15 text-[#f0b429] hover:bg-[#f0b429]/25'
+                                : 'bg-gray-800 text-gray-500 hover:bg-gray-700'}`}
+                          >
+                            {sizeOn ? 'On' : 'Off'}
+                          </button>
+                          <input
+                            type="text"
+                            value={sizeLabel}
+                            onChange={(e) => renameTempSize(key, sizeLabel, e.target.value)}
+                            className={`w-20 rounded-xl border border-gray-700 bg-[#252525] px-3 py-2 text-xs text-white outline-none focus:border-[#f0b429] ${sizeOn ? '' : 'line-through opacity-50'}`}
+                          />
+                          <div className={`flex flex-1 items-center rounded-xl border border-gray-700 bg-[#252525] pl-3 focus-within:border-[#f0b429] ${sizeOn ? '' : 'opacity-50'}`}>
+                            <span className="text-xs text-gray-500">₱</span>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={value}
+                              onChange={(e) => setTempSizePrice(key, sizeLabel, e.target.value)}
+                              className="w-full bg-transparent px-2 py-2 text-xs text-white outline-none"
+                            />
+                          </div>
+                          <button type="button" onClick={() => removeTempSize(key, sizeLabel)}
+                            className="text-red-400 hover:text-red-300 text-xs font-bold">✕</button>
+                        </div>
+                      );
+                    })}
+                    {sizes.length === 0 && (
+                      <p className="text-xs text-gray-500">No sizes — the base price will be used.</p>
+                    )}
+                    <div className="flex items-center gap-2">
+                      <input
+                        name={`newSize_${key}_label`}
+                        placeholder="Size"
+                        onKeyDown={(e) => {
+                          if (e.key !== 'Enter') return;
+                          e.preventDefault();
+                          const priceEl = e.target.form?.elements?.[`newSize_${key}_price`];
+                          addTempSize(key, e.target.value, priceEl?.value || '0');
+                          e.target.value = '';
+                          if (priceEl) priceEl.value = '';
+                        }}
+                        className="w-24 rounded-xl border border-gray-700 bg-[#252525] px-3 py-2 text-xs text-white outline-none focus:border-[#f0b429]"
+                      />
+                      <input
+                        name={`newSize_${key}_price`}
+                        placeholder="₱"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        onKeyDown={(e) => {
+                          if (e.key !== 'Enter') return;
+                          e.preventDefault();
+                          const labelEl = e.target.form?.elements?.[`newSize_${key}_label`];
+                          addTempSize(key, labelEl?.value || '', e.target.value || '0');
+                          if (labelEl) labelEl.value = '';
+                          e.target.value = '';
+                        }}
+                        className="w-20 rounded-xl border border-gray-700 bg-[#252525] px-3 py-2 text-xs text-white outline-none focus:border-[#f0b429]"
+                      />
+                      <button type="button" onClick={(e) => {
+                        const formEl = e.target.closest('form');
+                        const labelEl = formEl?.elements?.[`newSize_${key}_label`];
+                        const priceEl = formEl?.elements?.[`newSize_${key}_price`];
+                        addTempSize(key, labelEl?.value || '', priceEl?.value || '0');
+                        if (labelEl) labelEl.value = '';
+                        if (priceEl) priceEl.value = '';
+                      }} className="rounded-xl bg-[#f0b429] px-3 py-2 text-xs font-bold text-black hover:bg-[#e0a820]">
+                        Add
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
 
           <label className="flex cursor-pointer items-center gap-3 text-sm font-semibold text-gray-300">

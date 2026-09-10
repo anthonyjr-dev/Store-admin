@@ -1,4 +1,4 @@
-const BASE = 'https://api.butfirstcoffee.ph';
+const BASE = 'https://api.bfc.net.ph';
 
 let onUnauthorized = null;
 
@@ -132,4 +132,30 @@ export async function uploadProductImage(file, token) {
   const parts = filePath.split(/[/\\]uploads[/\\]/);
   const relative = parts[parts.length - 1].replace(/\\/g, '/');
   return `${BASE}/uploads/${relative}`;
+}
+
+// --- Lalamove delivery (staging API) ---
+
+export function lalamoveGet(orderId, token) {
+  return apiFetch(`/delivery/lalamove/orders/by-bfc/${orderId}`, token);
+}
+
+export function lalamoveDispatch(orderId, token, body = {}) {
+  return apiFetch(`/delivery/lalamove/orders/${orderId}/dispatch`, token, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
+export function lalamoveCancel(orderId, token) {
+  return apiFetch(`/delivery/lalamove/orders/by-bfc/${orderId}`, token, {
+    method: 'DELETE',
+  });
+}
+
+export function lalamoveSimulate(orderId, event, token) {
+  return apiFetch(`/delivery/lalamove/orders/by-bfc/${orderId}/simulate`, token, {
+    method: 'POST',
+    body: JSON.stringify({ event }),
+  });
 }

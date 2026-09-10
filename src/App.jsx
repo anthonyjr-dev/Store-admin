@@ -177,9 +177,18 @@ export default function App() {
       setNotifications((prev) => [buildNotification(order, 'updated'), ...prev]);
     });
 
+    // Lalamove delivery events (staging API) — refresh so the dispatch panels
+    // pick up the new driver / status.
+    socket.on('notification:new', (n) => {
+      if (n && typeof n.type === 'string' && n.type.startsWith('lalamove:')) {
+        loadOrders(session.token, session.user_type);
+      }
+    });
+
     return () => {
       socket.off('order:new');
       socket.off('order:updated');
+      socket.off('notification:new');
       disconnectSocket();
     };
   }, [session, ready, loadOrders]);

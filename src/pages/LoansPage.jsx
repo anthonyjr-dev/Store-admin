@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { updateOrderStatus, confirmOrderPayment } from '../api.js';
+import LalamoveDispatch from '../components/LalamoveDispatch.jsx';
 
 const CAN_CANCEL = [1, 3];
 
@@ -250,7 +251,7 @@ function ImageLightbox({ src, onClose }) {
   );
 }
 
-function OrderCard({ order, onAdvance, onCancel, confirming, canceling, advanceOrder, cancelOrder, userType, confirmPayment, confirmingPayment, advancing, branches = [] }) {
+function OrderCard({ order, onAdvance, onCancel, confirming, canceling, advanceOrder, cancelOrder, userType, confirmPayment, confirmingPayment, advancing, branches = [], token }) {
   const expanded = true;
   const [showCancelModal, setShowCancelModal] = useState(false);
   const action = (order.status === 'ready' && order.delivery_type === 'pickup') ? { label: 'Complete', next: 'delivered' } : ACTION[order.status];
@@ -351,6 +352,12 @@ function OrderCard({ order, onAdvance, onCancel, confirming, canceling, advanceO
           </div>
         )}
       </div>
+
+      {order.delivery_type === 'delivery' && (
+        <div className="px-4 pb-1">
+          <LalamoveDispatch order={order} token={token} />
+        </div>
+      )}
 
       <div className="flex gap-2 px-4 pb-4 pt-2">
         {canCancel && order.status !== 'cancelled' && order.status !== 'delivered' && (
@@ -531,6 +538,7 @@ function OrdersPage({ token, orders = [], loadingOrders, onOrdersChange, userTyp
                 confirmPayment={confirmPayment}
                 userType={userType}
                 branches={branches}
+                token={token}
               />
             ))}
           </div>
@@ -578,6 +586,7 @@ function OrdersPage({ token, orders = [], loadingOrders, onOrdersChange, userTyp
                           confirmPayment={confirmPayment}
                           userType={userType}
                           branches={branches}
+                          token={token}
                         />
                       ))
                     )}

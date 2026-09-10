@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { updateOrderStatus } from '../api.js';
+import LalamoveDispatch from '../components/LalamoveDispatch.jsx';
 
 const CAN_CANCEL = [1, 3];
 
@@ -159,7 +160,7 @@ function CancelModal({ onProceed, onClose, loading }) {
   );
 }
 
-function OrderCard({ order, onAdvance, onCancel, advancing, canceling, userType, branches = [] }) {
+function OrderCard({ order, onAdvance, onCancel, advancing, canceling, userType, branches = [], token }) {
   const expanded = true;
   const [showCancelModal, setShowCancelModal] = useState(false);
   const action = (order.status === 'ready' && order.delivery_type === 'pickup') ? { label: 'Complete', next: 'delivered' } : ACTION[order.status];
@@ -243,6 +244,12 @@ function OrderCard({ order, onAdvance, onCancel, advancing, canceling, userType,
           </div>
         )}
       </div>
+
+      {order.delivery_type === 'delivery' && (
+        <div className="px-4 pb-1">
+          <LalamoveDispatch order={order} token={token} />
+        </div>
+      )}
 
       <div className="flex gap-2 px-4 pb-4 pt-2">
         {canCancel && order.status !== 'cancelled' && order.status !== 'delivered' && (
@@ -363,6 +370,7 @@ function HomePage({ profile, orders = [], loadingOrders, token, onOrdersChange, 
               advancing={advancing}
               userType={userType}
               branches={branches}
+              token={token}
             />
           ))}
         </div>

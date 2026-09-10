@@ -41,7 +41,7 @@ export function connectSocket(token) {
   currentToken = token;
 
   try {
-    socket = io('https://api.butfirstcoffee.ph', {
+    socket = io('https://api.bfc.net.ph', {
       auth: token ? { token } : {},
       transports: ['websocket', 'polling'],
       autoConnect: false,
