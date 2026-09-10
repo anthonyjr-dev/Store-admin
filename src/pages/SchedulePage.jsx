@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { fetchStores, fetchBranches, createBranch, updateBranch, deleteBranch } from '../api.js';
+import { geoSearch, geoReverse } from '../googleGeo.js';
 
 // Custom gold pin icon (avoids bundler issues with Leaflet's default icon)
 const PIN_ICON = L.divIcon({
@@ -15,18 +16,9 @@ const PIN_ICON = L.divIcon({
   popupAnchor: [0, -42],
 });
 
-// Nominatim helpers
-async function nominatimSearch(query) {
-  const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=5&addressdetails=1`;
-  const res = await fetch(url, { headers: { 'Accept-Language': 'en' } });
-  return res.json();
-}
-
-async function nominatimReverse(lat, lng) {
-  const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&addressdetails=1`;
-  const res = await fetch(url, { headers: { 'Accept-Language': 'en' } });
-  return res.json();
-}
+// Geocoding via Google Maps Platform (Geocoding API).
+const nominatimSearch = (query) => geoSearch(query);
+const nominatimReverse = (lat, lng) => geoReverse(lat, lng);
 
 function LocationPickerModal({ initialLat, initialLng, initialAddress, onConfirm, onClose }) {
   const mapDivRef = useRef(null);
