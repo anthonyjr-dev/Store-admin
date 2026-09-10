@@ -29,8 +29,8 @@ export const ROLE_LABELS = {
 
 // Nav pages each restricted role may open. Anything else is hidden from the nav
 // and blocked from rendering even if reached programmatically. `null` = all pages.
-export const ADMIN_ALLOWED_PAGES = ['orders', 'products', 'reports', 'notifications'];
-export const BRANCH_ADMIN_ALLOWED_PAGES = ['orders', 'products', 'notifications'];
+export const ADMIN_ALLOWED_PAGES = ['orders', 'products', 'reports', 'notifications', 'support'];
+export const BRANCH_ADMIN_ALLOWED_PAGES = ['orders', 'products', 'notifications', 'support'];
 
 // user_type values allowed to sign in to the merchant portal.
 export const PORTAL_ROLES = [

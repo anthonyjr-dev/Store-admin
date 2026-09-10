@@ -9,6 +9,7 @@ import NotificationsPage from './pages/NotificationsPage.jsx';
 import ProductsPage from './pages/ProductsPage.jsx';
 import UsersPage from './pages/UsersPage.jsx';
 import ReportsPage from './pages/ReportsPage.jsx';
+import SupportPage from './pages/SupportPage.jsx';
 import Sidebar from './components/Sidebar.jsx';
 import { fetchAllOrders, fetchBranches, setUnauthorizedHandler as setApiUnauthorizedHandler } from './api.js';
 import GivePointsModal from './components/GivePointsModal.jsx';
@@ -292,6 +293,7 @@ export default function App() {
   const allNavItems = [
     { page: 'orders',      label: 'Orders',          icon: 'fa-bag-shopping',   badge: pendingCount },
     { page: 'products',      label: 'Menu',             icon: 'fa-box-open' },
+    { page: 'support',       label: 'Support',          icon: 'fa-comments' },
     { page: 'reports',       label: 'Reports',          icon: 'fa-chart-bar' },
     ...(isSuperAdmin ? [{ page: 'stores', label: 'Branches', icon: 'fa-store' }] : []),
     ...(isSuperAdmin ? [{ page: 'users', label: 'Users', icon: 'fa-users' }] : []),
@@ -344,6 +346,7 @@ export default function App() {
           />
         );
       case 'reports':       return <ReportsPage orders={orders} />;
+      case 'support':       return <SupportPage token={session.token} agentName={session.name} />;
       case 'users':         return <UsersPage token={session.token} />;
       case 'profile':       return <ProfilePage profile={session} onLogout={handleLogout} />;
       default:
