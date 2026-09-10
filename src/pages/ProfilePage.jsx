@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { ROLE_LABELS } from '../roles.js';
 
 function ProfilePage({ profile, onLogout }) {
   const [name, setName] = useState(profile.name || '');
@@ -12,7 +13,7 @@ function ProfilePage({ profile, onLogout }) {
   }
 
   const initial = (profile.name || profile.email || 'A')[0].toUpperCase();
-  const roleLabel = profile.user_type === 3 ? 'Super Admin' : profile.user_type === 2 ? 'Branch Admin' : 'Admin';
+  const roleLabel = ROLE_LABELS[profile.user_type] ?? 'Admin';
 
   return (
     <section className="space-y-6">

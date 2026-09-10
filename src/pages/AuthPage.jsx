@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import logo from '../assets/logo.png';
+import { PORTAL_ROLES } from '../roles.js';
 
 const LOGIN_URL = 'https://api.bfc.net.ph/auth/dashboard/login';
 
-// user_type: 1=admin, 2=branch_admin, 3=superadmin
-const ALLOWED_TYPES = new Set([1, 2, 3]);
+// user_type: 2=branch_admin, 3=superadmin, 4=admin (nav-restricted)
+const ALLOWED_TYPES = new Set(PORTAL_ROLES);
 
 function readError(data, fallback) {
   if (!data) return fallback;

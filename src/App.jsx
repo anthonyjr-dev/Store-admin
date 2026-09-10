@@ -14,6 +14,7 @@ import { fetchAllOrders, fetchBranches, setUnauthorizedHandler as setApiUnauthor
 import GivePointsModal from './components/GivePointsModal.jsx';
 import { connectSocket, disconnectSocket, setUnauthorizedHandler as setSocketUnauthorizedHandler } from './socket.js';
 import { playNewOrderAlert, playStatusUpdateSound, unlockAudio, activateAudio, audioBlocked } from './sound.js';
+import { allowedPages, canReceiveKioskOrders, isSuperAdmin as isSuperAdminRole } from './roles.js';
 
 // Orders sitting in the "New" board (see FILTERS in the Orders page).
 const NEW_BOARD_STATUSES = ['pending', 'confirmed'];
@@ -25,10 +26,6 @@ function loadSession() {
 }
 function saveSession(data) { localStorage.setItem(SESSION_KEY, JSON.stringify(data)); }
 function clearSession() { localStorage.removeItem(SESSION_KEY); }
-
-function canReceiveKioskOrders(userType) {
-  return Number(userType) >= 3;
-}
 
 function buildNotification(order, type) {
   const now = new Date();
@@ -290,10 +287,9 @@ export default function App() {
   const pendingCount = orders.filter((o) => o.status === 'pending').length;
   const unreadAlerts = notifications.filter((n) => !n.read).length;
 
-  const isSuperAdmin = session.branch_id === null || session.branch_id === undefined || session.user_type === 3;
-  const isBranchAdmin = session.user_type === 2;
+  const isSuperAdmin = isSuperAdminRole(session);
 
-  const navItems = [
+  const allNavItems = [
     { page: 'orders',      label: 'Orders',          icon: 'fa-bag-shopping',   badge: pendingCount },
     { page: 'products',      label: 'Menu',             icon: 'fa-box-open' },
     { page: 'reports',       label: 'Reports',          icon: 'fa-chart-bar' },
@@ -303,8 +299,15 @@ export default function App() {
     { page: 'profile',       label: 'Profile',          icon: 'fa-user' },
   ];
 
+  // Branch Admin / Admin only see a subset of pages; Super Admin sees all.
+  const allowed = allowedPages(session);
+  const navItems = allowed
+    ? allowed.map((p) => allNavItems.find((i) => i.page === p)).filter(Boolean)
+    : allNavItems;
+  const effectivePage = allowed && !allowed.includes(page) ? 'orders' : page;
+
   function renderPage() {
-    switch (page) {
+    switch (effectivePage) {
       case 'home':
         return (
           <HomePage
